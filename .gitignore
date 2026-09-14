@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node (only relevant inside fixtures)
+node_modules/
+
+# Local scan output
+out/
+*.preflight.json
+*.preflight.html
+
+# Environments
+.env
+.env.*
+
+# IMPORTANT: the fixture apps deliberately commit secrets. That is the point of
+# the corpus -- the tests assert real detections against real committed files.
+# Every value under fixtures/ is synthetic. See fixtures/README.md.
+!fixtures/**/.env
+!fixtures/**/.env.*
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

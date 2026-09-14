@@ -1,0 +1,55 @@
+# Deploy to ECR + App Runner.
+#
+# Committed but inert. It runs only on manual dispatch, and only once the repo
+# variable ENABLE_DEPLOY is set to "true" and the AWS OIDC role exists. Wiring it
+# up is four repo settings, not a code change:
+#
+#   Variables: ENABLE_DEPLOY=true, AWS_REGION, ECR_REPOSITORY, APPRUNNER_SERVICE_ARN
+#   Secrets:   AWS_DEPLOY_ROLE_ARN   (an IAM role trusting this repo via OIDC)
+#
+# OIDC rather than long-lived access keys, because a security tool that stores a
+# static AWS credential in CI is not one anybody should trust.
+
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "deploy" to confirm'
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  push-and-deploy:
+    if: vars.ENABLE_DEPLOY == 'true' && inputs.confirm == 'deploy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ github.sha }}
+            ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:latest
+
+      - name: Deploy to App Runner
+        run: |
+          aws apprunner start-deployment \
+            --service-arn "${{ vars.APPRUNNER_SERVICE_ARN }}"

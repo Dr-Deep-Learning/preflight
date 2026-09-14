@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preflight report — {{ result.target }}</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#ffffff; --ink:#14181f; --muted:#5b6472; --line:#e2e6ec;
+    --fatal:#b3261e; --fatal-bg:#fdecea; --serious:#8a5300; --serious-bg:#fdf3e3;
+    --hygiene:#2a5c8a; --hygiene-bg:#eaf2fa; --ok:#1c6b4b; --ok-bg:#e8f5ef;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0f1216; --card:#171b21; --ink:#e8ecf1; --muted:#98a2b3; --line:#262c35;
+      --fatal:#ff9d95; --fatal-bg:#2a1614; --serious:#f0c27a; --serious-bg:#2a2114;
+      --hygiene:#93c0ea; --hygiene-bg:#141f2a; --ok:#7fd3ac; --ok-bg:#122420; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:820px;margin:0 auto;padding:40px 20px 80px}
+  header{margin-bottom:28px}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:-.01em}
+  .meta{color:var(--muted);font-size:13px}
+  .verdict{border-radius:12px;padding:20px 22px;margin:24px 0 32px;border:1px solid var(--line)}
+  .verdict.bad{background:var(--fatal-bg);border-color:color-mix(in srgb,var(--fatal) 30%,transparent)}
+  .verdict.good{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok) 30%,transparent)}
+  .verdict h2{margin:0 0 4px;font-size:22px;letter-spacing:-.02em}
+  .verdict.bad h2{color:var(--fatal)} .verdict.good h2{color:var(--ok)}
+  .verdict p{margin:0;color:var(--muted)}
+  h3.section{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);
+    margin:36px 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  .finding{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;margin-bottom:14px}
+  .finding h4{margin:0 0 10px;font-size:17px;letter-spacing:-.01em}
+  .tags{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .tag{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    padding:3px 8px;border-radius:20px;background:var(--hygiene-bg);color:var(--hygiene)}
+  .tag.fatal{background:var(--fatal-bg);color:var(--fatal)}
+  .tag.serious{background:var(--serious-bg);color:var(--serious)}
+  .tag.unverified{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  dl{margin:14px 0 0}
+  dt{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:14px}
+  dd{margin:4px 0 0}
+  pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;
+    overflow-x:auto;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    white-space:pre-wrap;word-break:break-word}
+  ul.evidence{list-style:none;padding:0;margin:10px 0 0}
+  ul.evidence li{border-left:3px solid var(--line);padding:2px 0 2px 12px;margin-bottom:10px}
+  code.path{font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--ink)}
+  .snippet{font:12.5px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted);
+    display:block;margin-top:2px;word-break:break-all}
+  .note{font-size:12.5px;color:var(--muted);font-style:italic}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;overflow:hidden;font-size:14px}
+  td{padding:10px 14px;border-top:1px solid var(--line)}
+  tr:first-child td{border-top:none}
+  td.status{color:var(--ok);white-space:nowrap;width:1%}
+  td.status.skip{color:var(--muted)}
+  .scope{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px}
+  .scope li{margin-bottom:8px;color:var(--muted)}
+  footer{margin-top:40px;color:var(--muted);font-size:12.5px;line-height:1.7}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Preflight report</h1>
+    <div class="meta">
+      {{ result.target }} · scan {{ result.scan_id }} ·
+      {{ result.finished_at.strftime('%d %B %Y, %H:%M UTC') }} ·
+      ruleset {{ result.ruleset_version }}
+    </div>
+  </header>
+
+  <div class="verdict {{ 'good' if result.verdict.safe_to_launch else 'bad' }}">
+    <h2>{{ result.verdict.headline }}</h2>
+    <p>{{ result.verdict.detail }}</p>
+  </div>
+
+  <div class="meta">
+    Detected stack: {{ result.fingerprint.framework.value }} ·
+    {{ result.fingerprint.backend.value }} ·
+    {{ result.fingerprint.auth.value }}
+    {%- if result.fingerprint.payments.value != 'none' %} · {{ result.fingerprint.payments.value }}{% endif %}
+  </div>
+
+  {% for severity, findings in sections %}
+  <h3 class="section">{{ severity.heading }}</h3>
+    {% for f in findings %}
+    <article class="finding">
+      <div class="tags">
+        <span class="tag {{ severity.value }}">{{ severity.value }}</span>
+        <span class="tag">{{ f.rule_id }}</span>
+        <span class="tag">blast radius {{ f.blast_radius }}</span>
+        {% if f.confidence.value == 'unverified' %}
+        <span class="tag unverified">unverified — check this manually</span>
+        {% endif %}
+      </div>
+      <h4>{{ f.title }}</h4>
+      <p>{{ (f.explanation.what_it_means if f.explanation else f.summary) }}</p>
+
+      {% if f.evidence %}
+      <dt>Where</dt>
+      <ul class="evidence">
+        {% for e in f.evidence %}
+        <li>
+          <code class="path">{{ e.path }}{% if e.line %}:{{ e.line }}{% endif %}</code>
+          {% if e.snippet %}<span class="snippet">{{ e.snippet }}</span>{% endif %}
+          {% if e.note %}<span class="note">{{ e.note }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+
+      <dl>
+        {% if f.explanation %}
+        <dt>What someone could do with this</dt>
+        <dd>{{ f.explanation.attacker_impact }}</dd>
+        {% endif %}
+        <dt>How to fix it</dt>
+        <dd><pre>{{ f.explanation.fix if f.explanation else f.remediation.fix }}</pre></dd>
+        <dt>How to check it worked</dt>
+        <dd><pre>{{ f.explanation.verify if f.explanation else f.remediation.verify }}</pre></dd>
+      </dl>
+    </article>
+    {% endfor %}
+  {% endfor %}
+
+  <h3 class="section">What we checked and did not find</h3>
+  {% if passed or skipped or errored %}
+  <table>
+    {% for c in passed %}
+    <tr><td class="status">passed</td><td>{{ c.rule_id }} — {{ c.title }}</td></tr>
+    {% endfor %}
+    {% for c in skipped %}
+    <tr><td class="status skip">skipped</td><td>{{ c.rule_id }} — {{ c.title }} <span class="note">({{ c.detail }})</span></td></tr>
+    {% endfor %}
+    {% for c in errored %}
+    <tr><td class="status skip">errored</td><td>{{ c.rule_id }} — {{ c.title }} <span class="note">({{ c.detail }})</span></td></tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="meta">No checks ran.</p>
+  {% endif %}
+
+  <h3 class="section">What we did not check</h3>
+  <div class="scope">
+    <ul>
+      {% for limit in result.not_checked %}
+      <li>{{ limit }}</li>
+      {% endfor %}
+      <li>Business logic, race conditions, cryptography, and anything needing a human
+          pentester's judgement are out of scope for this ruleset.</li>
+    </ul>
+  </div>
+
+  <footer>
+    Preflight {{ result.preflight_version }}, ruleset {{ result.ruleset_version }}.
+    Scan completed in {{ '%.1f'|format(result.duration_seconds) }}s.<br>
+    Passing this scan does not mean your application is secure. It means the specific
+    defects in this published ruleset were not found. The ruleset covers the failure
+    modes that most often breach applications like yours; it is not a substitute for
+    a security review.
+  </footer>
+
+</div>
+</body>
+</html>
