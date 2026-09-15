@@ -29,8 +29,8 @@ llm = ["anthropic>=0.34"]
 preflight = "preflight.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/amythsethi/preflight"
-Issues = "https://github.com/amythsethi/preflight/issues"
+Homepage = "https://github.com/Dr-Deep-Learning/preflight"
+Issues = "https://github.com/Dr-Deep-Learning/preflight/issues"
 
 [dependency-groups]
 dev = [

@@ -99,7 +99,7 @@ Detection quality comes from two places rather than from bigger regexes:
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```console
-git clone https://github.com/amythsethi/preflight
+git clone https://github.com/Dr-Deep-Learning/preflight
 cd preflight
 uv sync
 uv run preflight scan ./path/to/your/app
