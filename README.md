@@ -1,6 +1,8 @@
 # Preflight
 [![ci](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml)
 
+[![ci](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml)
+
 **Pre-launch security review for applications built with AI coding tools.**
 
 Point it at a project directory and it tells you, in language you can act on
