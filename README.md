@@ -1,5 +1,4 @@
 # Preflight
-[![ci](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml)
 
 [![ci](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml/badge.svg)](https://github.com/Dr-Deep-Learning/preflight/actions/workflows/ci.yml)
 
@@ -15,20 +14,24 @@ $ preflight scan ./my-app
   Not safe to launch
   2 confirmed issues that can expose your users' data.
 
-  stack: vite-react / supabase   rules run: 3   findings: 5
+  stack: vite-react / supabase   rules run: 4   findings: 6
 
-  ! [F2] Supabase service-role key is hardcoded in your source
-      src/lib/supabaseClient.ts:7
   ! [F2] Environment file committed to git
       .env:6
       .env:7
       .env:10
+  ! [F2] Supabase service-role key is hardcoded in your source
+      src/lib/supabaseClient.ts:7
   ! [F1] 3 tables may be readable by anyone  (unverified)
+      supabase/migrations/0001_init.sql:10
       supabase/migrations/0001_init.sql:3
-  - [S2] A secret is named with a public environment prefix
-      .env:10
+      supabase/migrations/0001_init.sql:18
   - [S2] OpenAI-style API key is in code that ships to the browser
       src/components/Chat.tsx:3
+  - [S2] A secret is named with a public environment prefix
+      .env:10
+  - [S1] 1 payment webhook handler may accept forged requests  (unverified)
+      api/webhook.js:7
 ```
 
 ---
@@ -58,7 +61,9 @@ enforced structurally rather than by prompt. `preflight.engine` cannot import
 that finding and the stack fingerprint, and returns prose. It is never given the
 source, never asked whether a finding is real, and cannot add, suppress, or
 re-rank one. A test asserts this holds even when the explainer is actively
-adversarial.
+adversarial, and a second one reads the import graph out of the source with `ast`
+and fails the build if any module under `explain/` ever imports the engine — the
+`Explainer` protocol lives in `preflight.models` precisely so it never needs to.
 
 The reason is commercial, not aesthetic. A hallucinated vulnerability in a report
 sold to someone who cannot evaluate it destroys trust permanently and there is no
@@ -79,16 +84,17 @@ Two consequences fall out of the same commitment:
 
 ## What it checks today
 
-Three rules, versioned as ruleset `2026.09.0`. `preflight rules` prints the
+Four rules, versioned as ruleset `2026.09.1`. `preflight rules` prints the
 current set; `GET /rules` serves it as JSON.
 
 | ID | Tier | Check | Detects |
 |----|------|-------|---------|
 | **F1** | Fatal | Database access control | Tables created in SQL migrations with no `ENABLE ROW LEVEL SECURITY`, including the case where a policy exists but RLS was never enabled, so the policy is inert |
 | **F2** | Fatal | Privileged key exposure | Service-role JWTs, PEM private keys, Postgres URLs with passwords, AWS keys and Stripe secret keys written into source; environment files tracked by git |
+| **S1** | Serious | Payment webhook verification | Stripe and Paddle webhook handlers that trust the request body without calling `constructEvent` / `unmarshal` or comparing an HMAC — so a forged `checkout.session.completed` would be believed |
 | **S2** | Serious | Third-party key exposure | LLM, email, SMS and maps keys in code that ships to the browser, and secrets named with a `NEXT_PUBLIC_` / `VITE_` prefix that the bundler will inline |
 
-Detection quality comes from two places rather than from bigger regexes:
+Detection quality comes from three places rather than from bigger regexes:
 
 - **Semantic confirmation.** Any JWT matches the Supabase pattern; only one whose
   payload decodes to `"role":"service_role"` is reported. The anon key, which is
@@ -96,6 +102,18 @@ Detection quality comes from two places rather than from bigger regexes:
 - **Stack gating.** Rules declare the stacks they apply to, and the engine skips
   the rest and records why. A Firebase project never sees the RLS rule, and the
   report says so rather than staying silent.
+- **Narrow candidates for absence checks.** F1, F2 and S2 detect that something
+  *is* present, which is easy to evidence. S1 detects that something is *missing*,
+  which is two inferences deep — so it only considers a file that is server-side,
+  references a payment SDK, and either lives at a webhook path or reads a signed
+  header. Findings from it are always unverified, because verification may live in
+  middleware this rule cannot see.
+
+Severity says how urgent a finding is; **blast radius** says how much is exposed,
+on a three-level scale — `contained`, `broad`, `total` — defined by how many user
+records are reachable. Three named levels rather than a 0–100 score, because
+nobody can say what distinguishes 92 from 90 and the ruleset only ever
+distinguished three bands anyway.
 
 ## Install and use
 
@@ -159,13 +177,14 @@ src/preflight/
   report/          JSON is canonical; HTML renders from it.
   service/         FastAPI. Owns transport and the ownership guardrail, nothing else.
 fixtures/
-  vulnerable-app/  Vite + React + Supabase, three planted defects.
-  clean-app/       Next.js + Supabase, built correctly. Must always come back clean.
+  vulnerable-app/  Vite + React + Supabase + Stripe, four planted defects.
+  clean-app/       Next.js + Supabase + Stripe, built correctly. Always comes back clean.
 ```
 
 Adding a check is adding one module in `rules/`: declare `id`, `title`,
 `severity`, an `Applicability` gate and your blind spots in `limits`, then
-implement `check(ctx) -> Iterable[Finding]`. Nothing else in the system changes.
+implement `check(ctx) -> Iterable[Finding]`. Nothing else in the system changes —
+S1 was added exactly that way, as one module plus one line in `rules/__init__.py`.
 
 ## The fixture corpus
 
@@ -175,9 +194,10 @@ files a scanner would actually meet.
 `clean-app` is the more valuable of the two and is written to be hard to pass by
 accident. It hardcodes a Supabase **anon** key in a client component, commits an
 `.env.local` holding three `NEXT_PUBLIC_` variables of which two end in `_KEY`,
-and keeps its privileged Stripe call in an `app/api/` route handler. A scanner
-that matches on shape alone fires on all three. **If a rule fires on `clean-app`,
-the rule is wrong.**
+keeps its privileged Stripe call in an `app/api/` route handler, and answers its
+webhook with a correctly verified `constructEvent`. A scanner that matches on
+shape alone fires on all four. **If a rule fires on `clean-app`, the rule is
+wrong.**
 
 Every credential in `fixtures/` is synthetic: unsigned JWTs, a domain that does
 not resolve, keys shaped like the real thing and valid with nobody. They are
@@ -210,7 +230,6 @@ Deliberately deferred. The design is settled; the code is not written.
 |---|---|
 | **F3** server-side authorization | Endpoints that check authentication but not *ownership*. Needs call-graph analysis of route handlers, not pattern matching; the parser work is the reason it is not in week one. |
 | **F4** public admin surface | Route enumeration plus an unauthenticated request per candidate. Requires the URL-probe ingestion mode and therefore ownership verification first. |
-| **S1** webhook signature verification | Detectable statically today: a Stripe/Paddle handler with no `constructEvent`/signature check. Next rule to land. |
 | **S3–S5, Tier 3** | String-built SQL, dependency integrity, auth configuration, headers, CORS, rate limits. Each is a module in `rules/`; none needs an architectural change. |
 | **Mode B** backend connect | A read-only Supabase credential scoped to schema and policy inspection. Turns F1 from unverified into confirmed, and is the highest-value item on this list. |
 | **Mode C** URL probe | Client-bundle analysis and header inspection on a deployed app. Gated behind ownership verification by DNS TXT or a file served at a known path — no exceptions, including demos. |
@@ -231,6 +250,16 @@ CI runs the suite on 3.11 and 3.12, builds the image, and then does the thing
 that actually matters: asserts the scanner **fails** on `vulnerable-app` and
 **passes** on `clean-app`. A green suite with a scanner that finds nothing is the
 failure this catches.
+
+Two things the suite does that are worth knowing about before you edit anything:
+
+- **`--doctest-modules` is on**, and `src` is a testpath, so every `>>>` example
+  in a docstring is collected as a test. Documentation that stops being true fails
+  the build rather than quietly rotting.
+- **`tests/test_architecture.py` reads the import graph.** It fails if `explain/`
+  ever imports the engine, if the engine imports `explain/`, if a rule imports
+  `explain/`, or if `models` grows a dependency on anything inside the package.
+  The architecture is checked, not just described.
 
 ## Scope statement
 

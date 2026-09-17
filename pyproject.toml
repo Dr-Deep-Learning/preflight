@@ -80,6 +80,9 @@ module = ["anthropic.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = "-q --strict-markers"
+# `src` is a testpath because of --doctest-modules: every ">>>" example in a
+# docstring is collected as a test, so documentation that stops being true fails
+# the build instead of quietly rotting.
+testpaths = ["tests", "src"]
+addopts = "-q --strict-markers --doctest-modules"
 filterwarnings = ["error::DeprecationWarning"]

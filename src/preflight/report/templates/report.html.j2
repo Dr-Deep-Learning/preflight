@@ -93,7 +93,7 @@
       <div class="tags">
         <span class="tag {{ severity.value }}">{{ severity.value }}</span>
         <span class="tag">{{ f.rule_id }}</span>
-        <span class="tag">blast radius {{ f.blast_radius }}</span>
+        <span class="tag">{{ f.blast_radius.value }} exposure</span>
         {% if f.confidence.value == 'unverified' %}
         <span class="tag unverified">unverified — check this manually</span>
         {% endif %}

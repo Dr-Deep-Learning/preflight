@@ -23,6 +23,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 
+from preflight.models import BlastRadius
+
 
 class SecretKind(StrEnum):
     #: Bypasses access control or moves money. Fatal wherever it appears.
@@ -83,6 +85,10 @@ class SecretPattern:
     kind: SecretKind
     regex: re.Pattern[str]
     consequence: str
+    #: How much is exposed if this key leaks. Lives here, next to the sentence
+    #: that explains it, so the two cannot drift -- and so no rule has to keep a
+    #: private table of severities for the same catalogue.
+    blast_radius: BlastRadius
     validator: Callable[[str], bool] | None = None
 
     def confirm(self, value: str) -> bool:
@@ -97,6 +103,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Supabase service-role key",
         vendor="supabase",
         kind=SecretKind.PRIVILEGED,
+        blast_radius=BlastRadius.TOTAL,
         regex=re.compile(_JWT),
         validator=_is_service_role_jwt,
         consequence=(
@@ -109,6 +116,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Postgres connection string with a password",
         vendor="postgres",
         kind=SecretKind.PRIVILEGED,
+        blast_radius=BlastRadius.TOTAL,
         regex=re.compile(r"postgres(?:ql)?://[^\s:@'\"]+:[^\s@'\"]{4,}@[^\s'\"/]+"),
         consequence=(
             "Direct database access with whatever rights that role has, bypassing your app."
@@ -119,6 +127,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Stripe secret key",
         vendor="stripe",
         kind=SecretKind.PRIVILEGED,
+        blast_radius=BlastRadius.TOTAL,
         regex=re.compile(r"sk_(?:live|test)_[A-Za-z0-9]{16,}"),
         consequence="Full API access to your Stripe account: refunds, charges, customer records.",
     ),
@@ -127,6 +136,10 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="AWS access key id",
         vendor="aws",
         kind=SecretKind.PRIVILEGED,
+        # BROAD rather than TOTAL: what an AWS key reaches depends entirely on
+        # its IAM policy, which we cannot see. Claiming total compromise would
+        # be a guess dressed as a finding.
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"AKIA[0-9A-Z]{16}"),
         consequence="Programmatic access to whatever the key's IAM policy allows.",
     ),
@@ -135,6 +148,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="PEM private key",
         vendor="generic",
         kind=SecretKind.PRIVILEGED,
+        blast_radius=BlastRadius.TOTAL,
         regex=re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
         consequence=(
             "A signing or service-account key. For a Firebase admin credential this is "
@@ -146,6 +160,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Anthropic API key",
         vendor="anthropic",
         kind=SecretKind.THIRD_PARTY,
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
         consequence=(
             "Anyone can spend your model budget. This is the surprise-invoice class of leak."
@@ -156,6 +171,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="OpenAI-style API key",
         vendor="openai",
         kind=SecretKind.THIRD_PARTY,
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"sk-(?!ant-)[A-Za-z0-9](?:[A-Za-z0-9_-]{19,})"),
         consequence=(
             "Anyone can spend your model budget. This is the surprise-invoice class of leak."
@@ -166,6 +182,9 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Google API key",
         vendor="google",
         kind=SecretKind.THIRD_PARTY,
+        # Usually domain-restricted and quota-capped on the provider's side, so
+        # the realistic damage is smaller than an uncapped model key.
+        blast_radius=BlastRadius.CONTAINED,
         regex=re.compile(r"AIza[0-9A-Za-z_-]{35}"),
         consequence="Maps and Places calls billed to you, unless the key is domain-restricted.",
     ),
@@ -174,6 +193,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="SendGrid API key",
         vendor="sendgrid",
         kind=SecretKind.THIRD_PARTY,
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}"),
         consequence=(
             "Someone else can send mail as your domain, which also burns your sending reputation."
@@ -184,6 +204,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Resend API key",
         vendor="resend",
         kind=SecretKind.THIRD_PARTY,
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"re_[A-Za-z0-9]{8,}_[A-Za-z0-9]{16,}"),
         consequence="Someone else can send mail as your domain.",
     ),
@@ -192,6 +213,7 @@ PATTERNS: tuple[SecretPattern, ...] = (
         label="Twilio API key",
         vendor="twilio",
         kind=SecretKind.THIRD_PARTY,
+        blast_radius=BlastRadius.BROAD,
         regex=re.compile(r"\bSK[0-9a-fA-F]{32}\b"),
         consequence="Outbound SMS billed to you.",
     ),
@@ -203,6 +225,7 @@ SUPABASE_ANON_JWT = SecretPattern(
     label="Supabase anon key",
     vendor="supabase",
     kind=SecretKind.THIRD_PARTY,
+    blast_radius=BlastRadius.CONTAINED,
     regex=re.compile(_JWT),
     validator=_is_anon_jwt,
     consequence="Safe in the browser by design -- but only while row-level security is enabled.",

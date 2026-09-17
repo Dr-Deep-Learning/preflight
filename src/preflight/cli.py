@@ -15,8 +15,8 @@ import typer
 
 import preflight.rules  # noqa: F401 - imported to populate the rule registry
 from preflight import RULESET_VERSION, __version__
-from preflight.engine import REGISTRY, Explainer, run_scan
-from preflight.explain import StaticExplainer
+from preflight.engine import REGISTRY, run_scan
+from preflight.explain import get_explainer
 from preflight.ingest import ScanTargetError
 from preflight.models import Severity
 from preflight.report import render_html, render_json
@@ -24,16 +24,6 @@ from preflight.report import render_html, render_json
 app = typer.Typer(add_completion=False, help="Pre-launch security review for AI-built apps.")
 
 _THRESHOLDS = {"fatal": Severity.FATAL, "serious": Severity.SERIOUS, "hygiene": Severity.HYGIENE}
-
-
-def _build_explainer(name: str) -> Explainer:
-    if name == "static":
-        return StaticExplainer()
-    if name == "anthropic":
-        from preflight.explain.anthropic_explainer import AnthropicExplainer
-
-        return AnthropicExplainer()
-    raise typer.BadParameter(f"unknown explainer {name!r} (choose: static, anthropic)")
 
 
 @app.command()
@@ -50,7 +40,14 @@ def scan(
 ) -> None:
     """Scan a local project directory."""
     try:
-        result = run_scan(path, explainer=_build_explainer(explainer))
+        chosen = get_explainer(explainer)
+    except ValueError as exc:
+        # The library raises a library error; translating it into a CLI usage
+        # error is this edge's job, not the library's.
+        raise typer.BadParameter(str(exc)) from exc
+
+    try:
+        result = run_scan(path, explainer=chosen)
     except ScanTargetError as exc:
         typer.secho(f"error: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=2) from exc

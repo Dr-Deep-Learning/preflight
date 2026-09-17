@@ -22,7 +22,7 @@ from pathlib import PurePosixPath
 
 from preflight.engine import Applicability, ScanContext, register
 from preflight.fingerprint import is_client_reachable
-from preflight.models import Confidence, Evidence, Finding, Remediation, Severity
+from preflight.models import BlastRadius, Confidence, Evidence, Finding, Remediation, Severity
 from preflight.redact import redact_in_line
 from preflight.rules._shared import (
     KNOWN_SAFE_PUBLIC,
@@ -45,6 +45,9 @@ class ClientSideThirdPartyKeys:
         "would not be seen without fetching the deployed bundle.",
         "Whether a leaked key is domain-restricted on the provider's side cannot be "
         "determined from the code.",
+        "Values containing obvious placeholder text -- `your-key`, `changeme`, a long run "
+        "of zeros -- are treated as examples and skipped, so a real credential that happens "
+        "to contain one of those strings would be missed.",
     )
 
     def check(self, ctx: ScanContext) -> Iterable[Finding]:
@@ -55,6 +58,7 @@ class ClientSideThirdPartyKeys:
         by_pattern: dict[str, list[Evidence]] = {}
         labels: dict[str, str] = {}
         consequences: dict[str, str] = {}
+        radii: dict[str, BlastRadius] = {}
 
         for path in ctx.index.paths:
             text = ctx.read(path)
@@ -67,6 +71,7 @@ class ClientSideThirdPartyKeys:
                 )
                 labels[key] = match.pattern.label
                 consequences[key] = match.pattern.consequence
+                radii[key] = match.pattern.blast_radius
 
         for pattern_id, evidence in sorted(by_pattern.items()):
             label = labels[pattern_id]
@@ -79,7 +84,7 @@ class ClientSideThirdPartyKeys:
                     f"A {label.lower()} is written into front-end source. Anyone can read it with "
                     f"view-source or the network tab. {consequences[pattern_id]}"
                 ),
-                blast_radius=65,
+                blast_radius=radii[pattern_id],
                 evidence=evidence,
                 remediation=Remediation(
                     fix=(
@@ -137,7 +142,7 @@ class ClientSideThirdPartyKeys:
                 "look like secrets but carry a public prefix. Build tools substitute those into "
                 "the JavaScript they ship, so the value is readable by anyone who opens dev tools."
             ),
-            blast_radius=70,
+            blast_radius=BlastRadius.BROAD,
             evidence=evidence,
             remediation=Remediation(
                 fix=(

@@ -5,8 +5,8 @@ against real code instead of against mocks.
 
 | App | Stack | Expected outcome |
 |---|---|---|
-| `vulnerable-app/` | Vite + React + Supabase | F1, F2 and S2 all fire |
-| `clean-app/` | Next.js + Supabase | every rule passes |
+| `vulnerable-app/` | Vite + React + Supabase + Stripe | F1, F2, S1 and S2 all fire |
+| `clean-app/` | Next.js + Supabase + Stripe | every rule passes |
 
 `clean-app` is the more valuable of the two. Any scanner can find a secret; the
 thing that decides whether a report is trustworthy is whether a correctly built

@@ -10,7 +10,12 @@ Three ideas, and they are the architecture:
 3. Rules are deterministic and produce `Finding` objects. Nothing in this module
    can call a language model. The explanation layer runs strictly afterwards, on
    findings that already exist. That boundary is enforced by module structure, not
-   by a prompt (spec section 12: "the LLM explains, it never detects").
+   by a prompt (spec section 12: "the LLM explains, it never detects"), and
+   `tests/test_architecture.py` asserts it rather than trusting this paragraph.
+
+The `Explainer` protocol this module accepts is declared in `preflight.models`,
+not here, so that `preflight.explain` can be typed against it without importing
+the engine at all.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from preflight.models import (
     CheckOutcome,
     CheckStatus,
     Confidence,
+    Explainer,
     Explanation,
     Finding,
     Fingerprint,
@@ -143,17 +149,6 @@ def register(cls: type[RuleT]) -> type[RuleT]:
     """Class decorator. Import of a rule module is what puts it in the registry."""
     REGISTRY.add(cls())
     return cls
-
-
-@runtime_checkable
-class Explainer(Protocol):
-    """Turns a confirmed finding into founder-readable prose.
-
-    It receives the finding. It is never asked whether the finding is real, and it
-    is never given the project to look at.
-    """
-
-    def explain(self, finding: Finding, fingerprint: Fingerprint) -> Explanation: ...
 
 
 def build_verdict(findings: list[Finding]) -> Verdict:
@@ -305,10 +300,11 @@ def replace_explanation(finding: Finding, explanation: Explanation) -> Finding:
     return finding.model_copy(update={"explanation": explanation})
 
 
+# `Explainer` is deliberately absent: it is owned by `preflight.models`, and
+# re-exporting it here would invite `explain/` to import the engine to get it.
 __all__ = [
     "REGISTRY",
     "Applicability",
-    "Explainer",
     "Rule",
     "RuleRegistry",
     "ScanContext",

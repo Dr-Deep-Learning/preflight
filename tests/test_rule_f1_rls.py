@@ -1,7 +1,14 @@
 """F1: tables created without row-level security."""
 
 from preflight.engine import REGISTRY
-from preflight.models import Backend, Confidence, Fingerprint, Framework, Severity
+from preflight.models import (
+    Backend,
+    BlastRadius,
+    Confidence,
+    Fingerprint,
+    Framework,
+    Severity,
+)
 
 RULE = REGISTRY.get("F1")
 
@@ -40,7 +47,7 @@ def test_the_finding_is_unverified_because_migrations_are_intent_not_state(vulne
 
 def test_user_data_tables_raise_the_blast_radius(vulnerable_ctx):
     (finding,) = findings_for(vulnerable_ctx)
-    assert finding.blast_radius >= 90
+    assert finding.blast_radius is BlastRadius.TOTAL
 
 
 def test_a_correct_project_produces_nothing(clean_ctx):

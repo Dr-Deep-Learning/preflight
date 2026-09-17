@@ -45,5 +45,5 @@ def test_missing_directory_exits_two(tmp_path):
 def test_rules_command_lists_the_ruleset():
     result = runner.invoke(app, ["rules"])
     assert result.exit_code == 0
-    for rule_id in ("F1", "F2", "S2"):
+    for rule_id in ("F1", "F2", "S1", "S2"):
         assert rule_id in result.stdout
