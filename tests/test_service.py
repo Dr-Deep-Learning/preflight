@@ -29,7 +29,7 @@ def test_health(client):
 
 def test_rules_endpoint_publishes_the_ruleset(client):
     body = client.get("/rules").json()
-    assert [r["id"] for r in body["rules"]] == ["F1", "F2", "S2"]
+    assert [r["id"] for r in body["rules"]] == ["F1", "F2", "S1", "S2"]
     assert all(r["limits"] for r in body["rules"])
 
 

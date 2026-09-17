@@ -13,6 +13,10 @@ it, and it is written to be hard to pass by accident:
 - The privileged Stripe call lives in `app/api/checkout/route.ts`, which is
   server-only. A scanner that treats every file under `app/` as browser code
   would report it.
+- `app/api/stripe/webhook/route.ts` is a correctly written webhook handler: raw
+  body via `request.text()`, `constructEvent` before anything is trusted, 400 on
+  a bad signature. It is the control case for S1 — without it, a rule that never
+  fires would pass the clean fixture for the wrong reason.
 - Every table in `supabase/migrations/` enables row-level security in the same
   migration that creates it.
 

@@ -28,7 +28,15 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 
 from preflight.engine import Applicability, ScanContext, register
-from preflight.models import Backend, Confidence, Evidence, Finding, Remediation, Severity
+from preflight.models import (
+    Backend,
+    BlastRadius,
+    Confidence,
+    Evidence,
+    Finding,
+    Remediation,
+    Severity,
+)
 
 _COMMENTS = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
 _CREATE_TABLE = re.compile(
@@ -46,7 +54,7 @@ _CREATE_POLICY = re.compile(
 #: Schemas Supabase manages itself; their RLS is not the user's to configure.
 _MANAGED_SCHEMAS = frozenset({"auth", "storage", "realtime", "vault", "extensions", "graphql"})
 
-#: Table names that strongly imply per-user rows. Drives blast radius ordering.
+#: Table names that strongly imply per-user rows. Decides TOTAL vs BROAD.
 _USER_DATA_HINTS = (
     "user",
     "profile",
@@ -183,7 +191,7 @@ class MissingRowLevelSecurity:
                     else ""
                 )
             ),
-            blast_radius=95 if holds_user_data else 75,
+            blast_radius=BlastRadius.TOTAL if holds_user_data else BlastRadius.BROAD,
             evidence=evidence,
             remediation=Remediation(
                 fix=(

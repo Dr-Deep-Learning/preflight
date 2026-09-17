@@ -15,7 +15,13 @@ def redact_secret(value: str) -> str:
     """Reduce a credential to something recognisable but useless.
 
     >>> redact_secret("sk-abcdefghijklmnopqrstuvwxyz")
-    'sk-a...wxyz (27 chars)'
+    'sk-a...wxyz (29 chars)'
+
+    Short values are removed entirely: keeping four characters from each end of a
+    twelve-character secret would leak most of it.
+
+    >>> redact_secret("abc123")
+    '[redacted 6 chars]'
     """
     stripped = value.strip().strip("\"'")
     if len(stripped) < MIN_KEEP:
@@ -24,7 +30,12 @@ def redact_secret(value: str) -> str:
 
 
 def redact_in_line(line: str, secret: str, *, max_length: int = 200) -> str:
-    """Return `line` with `secret` replaced by its redaction, trimmed for display."""
+    """Return `line` with `secret` replaced by its redaction, trimmed for display.
+
+    >>> redact_in_line('  const KEY = "sk-abcdefghijklmnopqrstuvwxyz";',
+    ...                "sk-abcdefghijklmnopqrstuvwxyz")
+    'const KEY = "sk-a...wxyz (29 chars)";'
+    """
     cleaned = line.strip()
     stripped = secret.strip().strip("\"'")
     if stripped:

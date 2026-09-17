@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -45,6 +45,47 @@ class Confidence(StrEnum):
 
     CONFIRMED = "confirmed"
     UNVERIFIED = "unverified"
+
+
+class BlastRadius(StrEnum):
+    """How much is exposed, and how easily (spec section 6, "Ranking").
+
+    Three levels, defined in the spec's own terms -- how many user records are
+    reachable -- rather than a 0-100 score. A score implies precision the ruleset
+    does not have: nobody can say what distinguishes 92 from 90, and pretending
+    otherwise is its own small dishonesty.
+
+    Three rather than four because three is what the ruleset actually
+    distinguishes. Inventing a fourth level would mean guessing at a definition
+    with no rule to anchor it.
+    """
+
+    #: One user's own data, or spend held under a provider-side cap.
+    CONTAINED = "contained"
+    #: Many records, or uncapped spend.
+    BROAD = "broad"
+    #: Every row, or takeover of the account itself.
+    TOTAL = "total"
+
+    @property
+    def rank(self) -> int:
+        """Worst first, so it can be used directly as a sort key."""
+        return {"total": 0, "broad": 1, "contained": 2}[self.value]
+
+    @property
+    def impact(self) -> str:
+        """What someone could actually do with it. Read straight into the report."""
+        return {
+            "total": (
+                "Whole-database exposure. Someone acting on this reaches every user's "
+                "records, not just their own."
+            ),
+            "broad": (
+                "Broad exposure. Expect data or spend to be taken at scale, not one "
+                "record at a time."
+            ),
+            "contained": "Limited but real exposure. Worth fixing before you take money.",
+        }[self.value]
 
 
 class Framework(StrEnum):
@@ -130,19 +171,43 @@ class Finding(BaseModel):
     severity: Severity
     confidence: Confidence
     summary: str
-    blast_radius: int = Field(ge=0, le=100)
+    blast_radius: BlastRadius
     evidence: list[Evidence] = Field(default_factory=list)
     remediation: Remediation
     explanation: Explanation | None = None
 
     @property
     def sort_key(self) -> tuple[int, int, int, str]:
+        """Spec section 6: blast radius, not CVSS.
+
+        Ordering inside a level is by rule id -- arbitrary, and deliberately so.
+        When two findings are both total compromise, which one is printed first
+        does not change what the reader should do next.
+        """
         return (
             self.severity.rank,
             0 if self.confidence is Confidence.CONFIRMED else 1,
-            -self.blast_radius,
+            self.blast_radius.rank,
             self.rule_id,
         )
+
+
+@runtime_checkable
+class Explainer(Protocol):
+    """Turns a finding the engine has already produced into founder-readable prose.
+
+    This protocol lives in `models` rather than in `engine` on purpose. Its whole
+    signature is made of types declared in this file, and putting it here is what
+    lets `preflight.explain` be typed correctly while still importing nothing but
+    `preflight.models` -- so "the explanation layer cannot reach the engine" stays
+    literally true, and `tests/test_architecture.py` can assert it.
+
+    An implementation receives a finding that exists and returns four strings. It
+    is never asked whether the finding is real, and there is no argument through
+    which it could see the project.
+    """
+
+    def explain(self, finding: Finding, fingerprint: Fingerprint) -> Explanation: ...
 
 
 class CheckStatus(StrEnum):

@@ -23,7 +23,7 @@ from collections.abc import Iterable
 from pathlib import PurePosixPath
 
 from preflight.engine import Applicability, ScanContext, register
-from preflight.models import Confidence, Evidence, Finding, Remediation, Severity
+from preflight.models import BlastRadius, Confidence, Evidence, Finding, Remediation, Severity
 from preflight.rules._shared import (
     evidence_from,
     is_env_file,
@@ -31,14 +31,6 @@ from preflight.rules._shared import (
     secretish_assignments,
 )
 from preflight.rules.secrets import SecretKind, iter_secret_matches
-
-_BLAST_RADIUS = {
-    "supabase-service-role": 98,
-    "private-key-block": 95,
-    "postgres-connection-string": 92,
-    "aws-access-key-id": 85,
-    "stripe-secret-key": 84,
-}
 
 _ROTATE_FIRST = (
     "Rotate the credential first. Removing it from the code does not un-leak it -- "
@@ -56,6 +48,9 @@ class PrivilegedSecretExposure:
         "Secrets that were committed and later deleted are not detected: this scan reads "
         "the working tree, not git history.",
         "Secrets held only in a hosting provider's dashboard are out of scope.",
+        "Values containing obvious placeholder text -- `your-key`, `changeme`, a long run "
+        "of zeros -- are treated as examples and skipped, so a real credential that happens "
+        "to contain one of those strings would be missed.",
     )
 
     def check(self, ctx: ScanContext) -> Iterable[Finding]:
@@ -112,7 +107,7 @@ class PrivilegedSecretExposure:
                     else f"`{path}` exists and this project is not a git repository we could read, "
                     "so we could not tell whether it has been committed. Check manually."
                 ),
-                blast_radius=90 if confirmed else 60,
+                blast_radius=BlastRadius.TOTAL if confirmed else BlastRadius.BROAD,
                 evidence=evidence,
                 remediation=Remediation(
                     fix=(
@@ -137,6 +132,7 @@ class PrivilegedSecretExposure:
         by_pattern: dict[str, list[Evidence]] = {}
         labels: dict[str, str] = {}
         consequences: dict[str, str] = {}
+        radii: dict[str, BlastRadius] = {}
 
         for path in ctx.index.paths:
             name = PurePosixPath(path).name
@@ -150,6 +146,7 @@ class PrivilegedSecretExposure:
                 by_pattern.setdefault(key, []).append(evidence_from(match, path))
                 labels[key] = match.pattern.label
                 consequences[key] = match.pattern.consequence
+                radii[key] = match.pattern.blast_radius
 
         for pattern_id, evidence in sorted(by_pattern.items()):
             label = labels[pattern_id]
@@ -162,7 +159,7 @@ class PrivilegedSecretExposure:
                     f"A {label.lower()} appears in {len(evidence)} "
                     f"file location{'s' if len(evidence) != 1 else ''}. {consequences[pattern_id]}"
                 ),
-                blast_radius=_BLAST_RADIUS.get(pattern_id, 80),
+                blast_radius=radii[pattern_id],
                 evidence=evidence,
                 remediation=Remediation(
                     fix=(

@@ -2,7 +2,7 @@
 
 from conftest import SERVICE_ROLE_JWT, context_for
 from preflight.engine import REGISTRY
-from preflight.models import Confidence, Severity
+from preflight.models import BlastRadius, Confidence, Severity
 
 RULE = REGISTRY.get("F2")
 
@@ -19,7 +19,7 @@ def test_service_role_key_in_client_code_is_a_confirmed_fatal(vulnerable_ctx):
     (finding,) = by_title(findings_for(vulnerable_ctx), "Supabase service-role key is hardcoded")
     assert finding.severity is Severity.FATAL
     assert finding.confidence is Confidence.CONFIRMED
-    assert finding.blast_radius >= 95
+    assert finding.blast_radius is BlastRadius.TOTAL
     assert {e.path for e in finding.evidence} == {"src/lib/supabaseClient.ts"}
 
 
@@ -58,7 +58,7 @@ def test_env_file_outside_a_git_repository_is_unverified(tmp_path):
     (finding,) = by_title(findings_for(context_for(tmp_path)), "Environment file")
     assert finding.confidence is Confidence.UNVERIFIED
     assert "check manually" in finding.summary.lower()
-    assert finding.blast_radius < 90
+    assert finding.blast_radius is BlastRadius.BROAD
 
 
 def test_env_file_tracked_by_git_is_confirmed(git_project):

@@ -12,6 +12,7 @@ from preflight.engine import (
 )
 from preflight.models import (
     Backend,
+    BlastRadius,
     CheckStatus,
     Confidence,
     Explanation,
@@ -31,7 +32,7 @@ def make_finding(**kwargs):
         "severity": Severity.FATAL,
         "confidence": Confidence.CONFIRMED,
         "summary": "s",
-        "blast_radius": 50,
+        "blast_radius": BlastRadius.BROAD,
         "remediation": Remediation(fix="f", verify="v"),
     }
     return Finding(**{**defaults, **kwargs})
@@ -67,7 +68,7 @@ class TestRegistry:
             assert rule.limits, f"{rule.id} must state what it does not check"
 
     def test_the_shipped_ruleset_is_the_documented_one(self):
-        assert REGISTRY.ids() == ("F1", "F2", "S2")
+        assert REGISTRY.ids() == ("F1", "F2", "S1", "S2")
 
     def test_duplicate_ids_are_rejected(self):
         class Duplicate:
@@ -114,7 +115,7 @@ class TestVerdict:
 class TestScan:
     def test_vulnerable_app_is_not_safe_to_launch(self, vulnerable_scan):
         assert vulnerable_scan.verdict.headline == "Not safe to launch"
-        assert {f.rule_id for f in vulnerable_scan.findings} == {"F1", "F2", "S2"}
+        assert {f.rule_id for f in vulnerable_scan.findings} == {"F1", "F2", "S1", "S2"}
 
     def test_clean_app_is_clean(self, clean_scan):
         assert clean_scan.findings == []
