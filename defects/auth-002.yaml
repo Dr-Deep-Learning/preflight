@@ -1,0 +1,28 @@
+id: AUTH-002
+title: Row Level Security policy that allows everyone
+category: access-control
+severity: high
+detector: both
+status: active
+applies_to:
+  stacks: [supabase]
+  globs: ["supabase/migrations/**/*.sql", "**/*.sql"]
+cwe: [284]
+description: >
+  RLS is enabled but a policy's condition is always true (using (true) or
+  with check (true)) for writes or for private data, so RLS protects nothing.
+why_ai_apps: >
+  When a query fails because of RLS, the quickest fix an AI suggests is a
+  permissive policy that makes the error go away.
+bad_example: |
+  create policy "Enable all for users" on public.orders
+    for all using (true) with check (true);
+good_example: |
+  create policy "Users manage own orders" on public.orders
+    for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+false_positive_notes: >
+  for select using (true) on genuinely public data (a product catalog, published
+  blog posts) is intended. The defect is always-true conditions on insert, update,
+  delete, or all, or on tables holding user-private data.
+references:
+  - https://supabase.com/docs/guides/database/postgres/row-level-security

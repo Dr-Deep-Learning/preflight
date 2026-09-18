@@ -1,0 +1,29 @@
+id: INJ-001
+title: SQL built by string interpolation
+category: injection
+severity: critical
+detector: both
+status: active
+applies_to:
+  stacks: [any]
+  globs: ["**/*.{js,ts,py}"]
+cwe: [89]
+description: >
+  User-controlled input is concatenated or interpolated into a SQL string that is
+  executed as-is, allowing SQL injection.
+why_ai_apps: >
+  Raw SQL with template literals is the most direct way to express a query, and
+  the unsafe and safe forms look nearly identical.
+bad_example: |
+  const rows = await pool.query(`SELECT * FROM users WHERE email = '${req.query.email}'`);
+  await prisma.$queryRawUnsafe(`SELECT * FROM posts WHERE id = ${id}`);
+good_example: |
+  const rows = await pool.query("SELECT * FROM users WHERE email = $1", [req.query.email]);
+  await prisma.$queryRaw`SELECT * FROM posts WHERE id = ${id}`;
+false_positive_notes: >
+  Tagged template literals that parameterize automatically (Prisma $queryRaw``,
+  postgres.js sql``, Drizzle sql``) are safe even though they contain ${...}.
+  This is the key hard negative. Interpolating constants or server-side values
+  (not user input) is lower risk; report with lower confidence.
+references:
+  - https://owasp.org/Top10/A03_2021-Injection/

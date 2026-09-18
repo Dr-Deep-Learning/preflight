@@ -1,0 +1,28 @@
+id: INJ-002
+title: Unsanitized HTML rendered from user content
+category: injection
+severity: high
+detector: both
+status: active
+applies_to:
+  stacks: [react, nextjs, vite, vue]
+  globs: ["**/*.{jsx,tsx,vue}"]
+cwe: [79]
+description: >
+  Content that users can influence (comments, profiles, LLM output, markdown) is
+  rendered as raw HTML via dangerouslySetInnerHTML, v-html, or innerHTML without
+  sanitization, enabling stored XSS.
+why_ai_apps: >
+  Rendering rich text or LLM-generated markdown is a common feature request, and
+  raw HTML insertion is the shortest path.
+bad_example: |
+  <div dangerouslySetInnerHTML={{ __html: comment.body }} />
+good_example: |
+  import DOMPurify from "dompurify";
+  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(comment.body) }} />
+  // or render as text: <div>{comment.body}</div>
+false_positive_notes: >
+  Static, developer-authored HTML. Output of a markdown pipeline that sanitizes
+  (e.g. react-markdown without rehype-raw, or with rehype-sanitize).
+references:
+  - https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html

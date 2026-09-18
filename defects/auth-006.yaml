@@ -1,0 +1,33 @@
+id: AUTH-006
+title: Resource fetched by ID without ownership check (IDOR)
+category: access-control
+severity: high
+detector: llm
+status: active
+applies_to:
+  stacks: [nextjs, express, serverless]
+  globs: ["app/api/**/*.{js,ts}", "pages/api/**/*.{js,ts}", "api/**/*.{js,ts}", "server/**/*.{js,ts}"]
+cwe: [639]
+description: >
+  The caller is authenticated, but the handler loads a record using an ID from the
+  URL or body and returns or modifies it without confirming it belongs to the
+  caller. Changing the ID exposes other users' data.
+why_ai_apps: >
+  "Get order by id" is implemented exactly as stated. Authentication is present,
+  so it looks secure.
+bad_example: |
+  const session = await getSession();
+  if (!session) return unauthorized();
+  const order = await db.order.findUnique({ where: { id: params.id } });
+  return Response.json(order);
+good_example: |
+  const order = await db.order.findFirst({
+    where: { id: params.id, userId: session.user.id },
+  });
+  if (!order) return new Response("Not found", { status: 404 });
+false_positive_notes: >
+  Resources that are public by design. Queries on Supabase tables where RLS
+  enforces ownership (then the check lives in the database). Admin-only routes
+  already gated by role.
+references:
+  - https://cwe.mitre.org/data/definitions/639.html

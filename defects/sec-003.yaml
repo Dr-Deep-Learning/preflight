@@ -1,0 +1,30 @@
+id: SEC-003
+title: Environment file committed to the repository
+category: secrets
+severity: high
+detector: rule
+status: active
+applies_to:
+  stacks: [any]
+  globs: [".env", ".env.local", ".env.production", ".env.*.local", ".gitignore"]
+cwe: [540]
+description: >
+  A .env file containing real values is tracked in git, or .gitignore does not
+  exclude .env files. Secrets stay in git history even after the file is deleted.
+why_ai_apps: >
+  Project scaffolds from AI builders don't always include a complete .gitignore,
+  and users commit everything with a single "push to GitHub" button.
+bad_example: |
+  # .env (tracked in git)
+  SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOiJIUzI1NiIs...
+good_example: |
+  # .gitignore
+  .env
+  .env*.local
+  # .env.example (tracked, placeholders only)
+  SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+false_positive_notes: >
+  .env.example / .env.sample files with placeholder values. Env files containing
+  only non-secret config (PORT=3000, public URLs).
+references:
+  - https://cwe.mitre.org/data/definitions/540.html

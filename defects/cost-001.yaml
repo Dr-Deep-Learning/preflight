@@ -1,0 +1,38 @@
+id: COST-001
+title: Unprotected LLM proxy endpoint
+category: cost
+severity: high
+detector: llm
+status: active
+applies_to:
+  stacks: [any]
+  globs: ["app/api/**/*.{js,ts}", "pages/api/**/*.{js,ts}", "api/**/*.{js,ts}", "server/**/*.{js,ts,py}", "supabase/functions/**/*.ts"]
+cwe: [770]
+description: >
+  A backend route forwards requests to a paid LLM API with no authentication, no
+  rate limiting, and/or no cap on tokens or input size. Anyone who finds the
+  endpoint can use it as a free LLM and run up the owner's bill.
+why_ai_apps: >
+  Moving the key to the server (correctly fixing SEC-002) often produces an open
+  relay, since the route just passes the request through.
+bad_example: |
+  export async function POST(req) {
+    const { messages, model } = await req.json();
+    const r = await openai.chat.completions.create({ model, messages });
+    return Response.json(r);
+  }
+good_example: |
+  export async function POST(req) {
+    const session = await getSession();
+    if (!session) return new Response("Unauthorized", { status: 401 });
+    if (!(await ratelimit.limit(session.user.id)).success) return new Response("Too many requests", { status: 429 });
+    const { messages } = await req.json();
+    const r = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: messages.slice(-20), max_tokens: 800 });
+    return Response.json(r.choices[0].message);
+  }
+false_positive_notes: >
+  Rate limiting or auth applied in middleware or at the platform level (e.g. an
+  API gateway). A public demo endpoint with a hard daily budget cap is a
+  deliberate tradeoff; report at low severity.
+references:
+  - https://cwe.mitre.org/data/definitions/770.html

@@ -1,0 +1,35 @@
+id: SEC-002
+title: Privileged key exposed to the browser
+category: secrets
+severity: critical
+detector: both
+status: active
+applies_to:
+  stacks: [nextjs, vite, react]
+  globs: ["**/*.{js,jsx,ts,tsx}", ".env*"]
+cwe: [522]
+description: >
+  A server-only credential reaches client-side code. Either it is read through a
+  public env prefix (NEXT_PUBLIC_, VITE_, REACT_APP_) that bundlers inline into the
+  JavaScript shipped to users, or an SDK is called from the browser with a secret
+  key (e.g. the OpenAI SDK's dangerouslyAllowBrowser option). Anyone can open
+  devtools and take the key.
+why_ai_apps: >
+  The env var "doesn't work" in the browser until it gets a public prefix, so the
+  AI adds one. The code runs, and the key ships to every visitor.
+bad_example: |
+  // src/lib/ai.ts (runs in the browser)
+  const openai = new OpenAI({
+    apiKey: import.meta.env.VITE_OPENAI_API_KEY,
+    dangerouslyAllowBrowser: true,
+  });
+good_example: |
+  // Browser calls your own backend route; the key stays on the server.
+  const res = await fetch("/api/chat", { method: "POST", body: JSON.stringify({ messages }) });
+false_positive_notes: >
+  Public prefixes on keys that are meant to be public (Supabase anon key, Stripe
+  publishable key, Firebase config). The defect is the combination of a public
+  prefix or browser context with a secret-class key such as service_role, sk_live_,
+  sk-proj-, or a database password.
+references:
+  - https://supabase.com/docs/guides/api/api-keys

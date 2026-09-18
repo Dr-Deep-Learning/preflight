@@ -1,0 +1,34 @@
+id: PAY-002
+title: Price or amount taken from the client
+category: payments
+severity: high
+detector: llm
+status: active
+applies_to:
+  stacks: [stripe]
+  globs: ["app/api/**/*.{js,ts}", "pages/api/**/*.{js,ts}", "api/**/*.{js,ts}", "server/**/*.{js,ts}", "supabase/functions/**/*.ts"]
+cwe: [472]
+description: >
+  The server creates a checkout session or charge using a price, amount, or
+  discount sent by the browser, so users can edit the request and pay what they like.
+why_ai_apps: >
+  The frontend already knows the price for display, so passing it through to the
+  checkout call looks natural.
+bad_example: |
+  const { amount, name } = await req.json();
+  await stripe.checkout.sessions.create({
+    line_items: [{ price_data: { currency: "usd", unit_amount: amount, product_data: { name } }, quantity: 1 }],
+    mode: "payment", success_url, cancel_url,
+  });
+good_example: |
+  const { productId } = await req.json();
+  const product = await db.product.findUnique({ where: { id: productId } });
+  await stripe.checkout.sessions.create({
+    line_items: [{ price: product.stripePriceId, quantity: 1 }],
+    mode: "payment", success_url, cancel_url,
+  });
+false_positive_notes: >
+  Deliberately user-chosen amounts (donations, tips, pay-what-you-want). Even then,
+  server-side min/max bounds are expected; flag missing bounds at lower severity.
+references:
+  - https://cwe.mitre.org/data/definitions/472.html

@@ -1,0 +1,29 @@
+id: AUTH-003
+title: Open Firebase security rules
+category: access-control
+severity: critical
+detector: rule
+status: active
+applies_to:
+  stacks: [firebase]
+  globs: ["firestore.rules", "storage.rules", "database.rules.json"]
+cwe: [284]
+description: >
+  Firestore, Storage, or Realtime Database rules allow unauthenticated reads or
+  writes to everything, either unconditionally or until a "test mode" expiry date.
+why_ai_apps: >
+  Firebase's test-mode default is the path of least resistance, and the expiry
+  date is easy to extend instead of writing real rules.
+bad_example: |
+  match /{document=**} {
+    allow read, write: if true;
+  }
+good_example: |
+  match /users/{userId} {
+    allow read, write: if request.auth != null && request.auth.uid == userId;
+  }
+false_positive_notes: >
+  allow read: if true scoped to a specific public collection (not the
+  {document=**} wildcard) can be intended.
+references:
+  - https://firebase.google.com/docs/rules/insecure-rules

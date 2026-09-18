@@ -1,0 +1,28 @@
+id: CFG-001
+title: CORS reflects any origin with credentials
+category: config
+severity: medium
+detector: rule
+status: active
+applies_to:
+  stacks: [express, nextjs, serverless]
+  globs: ["**/*.{js,ts}", "next.config.{js,mjs,ts}", "vercel.json"]
+cwe: [942]
+description: >
+  The server echoes back any request Origin while allowing credentials, so any
+  website can make authenticated requests on behalf of a logged-in user and read
+  the responses.
+why_ai_apps: >
+  CORS errors are a frequent blocker, and "allow everything" is the fix that
+  makes the error disappear.
+bad_example: |
+  app.use(cors({ origin: true, credentials: true }));
+good_example: |
+  app.use(cors({ origin: ["https://myapp.com"], credentials: true }));
+false_positive_notes: >
+  Access-Control-Allow-Origin: * without credentials on a public, read-only API is
+  fine (browsers refuse * combined with credentials anyway). The risky case is
+  origin reflection (origin: true, or copying the request Origin header) together
+  with credentials.
+references:
+  - https://cwe.mitre.org/data/definitions/942.html

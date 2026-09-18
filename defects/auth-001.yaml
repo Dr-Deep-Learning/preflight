@@ -1,0 +1,39 @@
+id: AUTH-001
+title: Supabase table without Row Level Security
+category: access-control
+severity: critical
+detector: both
+status: active
+applies_to:
+  stacks: [supabase]
+  globs: ["supabase/migrations/**/*.sql", "**/*.sql"]
+cwe: [284]
+description: >
+  A table in an API-exposed schema (usually public) is created without enabling
+  Row Level Security. With the anon key, which is public by design, anyone can read
+  or modify every row through the auto-generated REST API.
+why_ai_apps: >
+  The app works identically with or without RLS during development, so nothing
+  prompts the builder to add it. This has been the root cause of real mass data
+  exposures in AI-built apps.
+bad_example: |
+  create table public.profiles (
+    id uuid primary key references auth.users,
+    email text,
+    phone text
+  );
+good_example: |
+  create table public.profiles (
+    id uuid primary key references auth.users,
+    email text,
+    phone text
+  );
+  alter table public.profiles enable row level security;
+  create policy "own profile" on public.profiles
+    for select using (auth.uid() = id);
+false_positive_notes: >
+  RLS enabled in a later migration file (check across all migrations, not per file).
+  Tables in schemas not exposed by the API. Views and functions need separate
+  handling and are not covered by this entry.
+references:
+  - https://supabase.com/docs/guides/database/postgres/row-level-security

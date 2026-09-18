@@ -1,0 +1,27 @@
+id: SEC-001
+title: Hardcoded secret in source code
+category: secrets
+severity: critical
+detector: rule
+status: active
+applies_to:
+  stacks: [any]
+  globs: ["**/*.{js,jsx,ts,tsx,py,json,yaml,yml,toml}"]
+cwe: [798]
+description: >
+  A secret credential (LLM API key, Stripe secret key, database URL with password,
+  service-role token) is written directly into a source file instead of being
+  loaded from the environment or a secret manager.
+why_ai_apps: >
+  AI tools often paste the key the user shared in chat straight into the code to
+  "make it work," and non-coders don't know to move it out before committing.
+bad_example: |
+  const openai = new OpenAI({ apiKey: "sk-proj-4fT9...realkey..." });
+good_example: |
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+false_positive_notes: >
+  Keys that are designed to be public: Stripe publishable keys (pk_live_/pk_test_),
+  Supabase anon keys, Firebase web apiKey. Also obvious placeholders ("sk-xxx",
+  "your-api-key-here") and fixtures under test/ directories.
+references:
+  - https://cwe.mitre.org/data/definitions/798.html

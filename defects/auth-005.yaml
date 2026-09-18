@@ -1,0 +1,37 @@
+id: AUTH-005
+title: API route performs sensitive action without authentication
+category: access-control
+severity: high
+detector: llm
+status: active
+applies_to:
+  stacks: [nextjs, express, serverless]
+  globs: ["app/api/**/*.{js,ts}", "pages/api/**/*.{js,ts}", "api/**/*.{js,ts}", "server/**/*.{js,ts}", "supabase/functions/**/*.ts"]
+cwe: [306]
+description: >
+  A server endpoint that reads private data or mutates state (create, update,
+  delete, send email, charge money) never checks who the caller is.
+why_ai_apps: >
+  AI generates the handler logic first and auth is a separate concern it only
+  adds when asked.
+bad_example: |
+  export async function POST(req) {
+    const { userId, plan } = await req.json();
+    await db.subscription.update({ where: { userId }, data: { plan } });
+    return Response.json({ ok: true });
+  }
+good_example: |
+  export async function POST(req) {
+    const session = await getServerSession();
+    if (!session) return new Response("Unauthorized", { status: 401 });
+    const { plan } = await req.json();
+    await db.subscription.update({ where: { userId: session.user.id }, data: { plan } });
+    return Response.json({ ok: true });
+  }
+false_positive_notes: >
+  Intentionally public endpoints: health checks, public reads, signup/login,
+  webhooks that verify a signature instead (see PAY-001). Auth applied in
+  middleware (middleware.ts, a router-level guard) counts; check for it before
+  flagging.
+references:
+  - https://cwe.mitre.org/data/definitions/306.html
