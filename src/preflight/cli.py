@@ -100,6 +100,8 @@ def rules() -> None:
             gates.append("payments " + "/".join(sorted(p.value for p in gate.payments)))
         typer.echo(f"  {rule.id:<4} {rule.severity.value:<8} {rule.title}")
         typer.echo(f"       applies to: {', '.join(gates) if gates else 'every stack'}")
+        if rule.catalog_ids:
+            typer.echo(f"       catalog:    {', '.join(rule.catalog_ids)}")
 
 
 @app.command()

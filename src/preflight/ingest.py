@@ -13,10 +13,13 @@ and changing nothing in the rules.
 
 from __future__ import annotations
 
+import re
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from typing import Protocol
+
+import pathspec
 
 SKIP_DIRS = frozenset(
     {
@@ -80,6 +83,32 @@ TEXT_SUFFIXES = frozenset(
 )
 
 MAX_FILE_BYTES = 1_000_000
+
+_BRACE_GROUP = re.compile(r"\{([^{}]*)\}")
+
+
+def expand_braces(pattern: str) -> list[str]:
+    """Expand shell-style alternation in a glob.
+
+    `pathlib` and `pathspec` both understand `*` and `**`; neither understands
+    `{a,b}`, and a pattern containing it silently matches nothing. Since the
+    defect catalog is written with alternation -- `**/*.{js,jsx,ts,tsx}` is the
+    natural way to say it -- expanding here is cheaper than forbidding it and
+    writing four patterns everywhere.
+
+    >>> expand_braces("app/**/*.{js,ts}")
+    ['app/**/*.js', 'app/**/*.ts']
+    >>> expand_braces("**/*.sql")
+    ['**/*.sql']
+    """
+    match = _BRACE_GROUP.search(pattern)
+    if match is None:
+        return [pattern]
+    head, tail = pattern[: match.start()], pattern[match.end() :]
+    expanded: list[str] = []
+    for option in match.group(1).split(","):
+        expanded.extend(expand_braces(f"{head}{option.strip()}{tail}"))
+    return expanded
 
 
 class ScanTargetError(ValueError):
@@ -173,7 +202,19 @@ class FileIndex:
         return tuple(p for p in self.paths if PurePosixPath(p).name.lower() in wanted)
 
     def matching(self, *globs: str) -> tuple[str, ...]:
-        return tuple(p for p in self.paths if any(PurePosixPath(p).match(g) for g in globs))
+        """Paths matching any of these globs, using gitignore semantics.
+
+        Not `PurePath.match`, which treats a mid-pattern `**` as a single `*` --
+        so `supabase/migrations/**/*.sql` matched nothing at all. gitignore
+        semantics are what anyone writing these patterns already expects, and
+        `pathspec` implements them: a pattern containing a slash is anchored to
+        the project root, one without it matches at any depth.
+        """
+        patterns: list[str] = []
+        for glob in globs:
+            patterns.extend(expand_braces(glob))
+        spec = pathspec.PathSpec.from_lines("gitignore", patterns)
+        return tuple(p for p in self.paths if spec.match_file(p))
 
     def exists(self, relpath: str) -> bool:
         return relpath in set(self.paths)

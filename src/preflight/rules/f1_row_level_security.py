@@ -105,6 +105,7 @@ class MissingRowLevelSecurity:
     title: str = "Database access control (row-level security)"
     severity: Severity = Severity.FATAL
     applicability: Applicability = Applicability(backends=frozenset({Backend.SUPABASE}))
+    catalog_ids: tuple[str, ...] = ("AUTH-001",)
     limits: tuple[str, ...] = (
         "Row-level security is read from SQL migrations only. This scan does not connect to "
         "your database, so RLS enabled by hand in the dashboard is not visible to it.",

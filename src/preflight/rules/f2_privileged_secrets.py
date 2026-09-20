@@ -44,6 +44,9 @@ class PrivilegedSecretExposure:
     title: str = "Privileged key exposure"
     severity: Severity = Severity.FATAL
     applicability: Applicability = Applicability.anything()
+    #: SEC-001 is the hardcoded credential, SEC-003 the committed environment
+    #: file. One rule, two catalog entries, because the fixes differ.
+    catalog_ids: tuple[str, ...] = ("SEC-001", "SEC-003")
     limits: tuple[str, ...] = (
         "Secrets that were committed and later deleted are not detected: this scan reads "
         "the working tree, not git history.",

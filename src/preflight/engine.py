@@ -109,6 +109,12 @@ class Rule(Protocol):
     title: str
     severity: Severity
     applicability: Applicability
+    #: Catalog entries this rule implements, e.g. ("SEC-001", "SEC-003").
+    #: The catalog is the shared vocabulary between deterministic rules and any
+    #: later model-driven check, so a rule that reports in its own private
+    #: numbering cannot be compared with anything. `tests/test_catalog.py`
+    #: asserts every id here exists.
+    catalog_ids: tuple[str, ...]
     #: Honest scope statement fragments for report section "what we did not check".
     limits: tuple[str, ...]
 
