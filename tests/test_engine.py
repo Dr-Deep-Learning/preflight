@@ -76,6 +76,7 @@ class TestRegistry:
             title = "t"
             severity = Severity.FATAL
             applicability = Applicability.anything()
+            catalog_ids = ()
             limits = ("none",)
 
             def check(self, ctx):
@@ -147,6 +148,7 @@ class TestScan:
             title = "explodes"
             severity = Severity.HYGIENE
             applicability = Applicability.anything()
+            catalog_ids = ()
             limits = ("nothing",)
 
             def check(self, ctx):

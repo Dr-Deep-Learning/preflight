@@ -115,6 +115,41 @@ records are reachable. Three named levels rather than a 0–100 score, because
 nobody can say what distinguishes 92 from 90 and the ruleset only ever
 distinguished three bands anyway.
 
+## The defect catalog
+
+`src/preflight/defects/` holds one YAML file per defect — fifteen today, covering
+secrets, access control, injection, payments, cost and configuration. Each entry
+carries a permanent ID, a CWE, worked bad and good examples, and a
+`false_positive_notes` field describing the safe code that looks like the defect.
+
+The catalog is the shared vocabulary. A rule declares which entries it implements
+(`catalog_ids`), so a deterministic check and a future model-driven one that find
+the same defect report the same ID and can be counted together. `preflight rules`
+and `GET /rules` both print the mapping.
+
+It is loaded and validated by `catalog.py`, and `tests/test_catalog.py` asserts
+rather more than "the YAML parses":
+
+- Stack tokens come from a closed vocabulary, so a typo fails the build instead
+  of silently gating nothing. Tokens naming things the fingerprinter cannot yet
+  detect — `express`, `serverless`, `vue` — are recorded as such, and an entry
+  that mentions one gets **no** gate rather than a narrowed one. The tokens are a
+  disjunction and `Applicability` conjoins its dimensions, so a narrowed gate
+  would skip precisely the projects we failed to identify.
+- The catalog's `critical`/`high`/`medium` and the engine's
+  `FATAL`/`SERIOUS`/`HYGIENE` have exactly one mapping between them, and the
+  three places where a catalog entry and its rule currently disagree are listed
+  explicitly in the test. Each is a decision someone owes an answer to.
+- Every glob is expanded and matched against the fixture corpus. The patterns
+  that reach nothing are enumerated, so a corpus gap is visible and a broken
+  pattern fails the build.
+
+That last one exists because it caught a real bug: written as
+`supabase/migrations/**/*.sql`, the catalog's globs matched **nothing**.
+`PurePath.match` treats a mid-pattern `**` as a single `*`, and understands no
+brace alternation at all. Matching now goes through `pathspec` with gitignore
+semantics, which is what anyone writing these patterns already expects.
+
 ## Install and use
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
@@ -172,6 +207,8 @@ src/preflight/
   ingest.py        Mode A (local directory) + the FileIndex/GitInfo seam.
   fingerprint.py   Framework, backend, auth, payments; and what counts as client code.
   engine.py        Rule protocol, registry, stack gating, ranking, verdict.
+  catalog.py       Loads and validates the defect catalog; the shared vocabulary.
+  defects/         One YAML file per defect. Ships inside the package.
   rules/           One module per check. Importing the package registers them.
   explain/         Strictly downstream of detection. Static by default, Claude optional.
   report/          JSON is canonical; HTML renders from it.

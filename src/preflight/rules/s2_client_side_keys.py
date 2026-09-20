@@ -40,6 +40,7 @@ class ClientSideThirdPartyKeys:
     title: str = "Third-party API key exposure"
     severity: Severity = Severity.SERIOUS
     applicability: Applicability = Applicability.anything()
+    catalog_ids: tuple[str, ...] = ("SEC-002",)
     limits: tuple[str, ...] = (
         "Only source files are inspected. A key injected by a build step or a CDN script "
         "would not be seen without fetching the deployed bundle.",

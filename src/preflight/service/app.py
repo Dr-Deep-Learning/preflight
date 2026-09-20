@@ -77,6 +77,7 @@ def rules() -> dict[str, object]:
                 "id": rule.id,
                 "title": rule.title,
                 "severity": rule.severity.value,
+                "catalog_ids": list(rule.catalog_ids),
                 "limits": list(rule.limits),
             }
             for rule in REGISTRY

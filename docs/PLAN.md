@@ -139,7 +139,10 @@ improve.
 
 ## Roadmap
 
-1. **CI schema validator** so a malformed defect file fails the build ← next
+1. ~~**CI schema validator** so a malformed defect file fails the build~~ —
+   **done**, as `catalog.py` plus `tests/test_catalog.py` rather than a separate
+   script and workflow step, since CI already runs pytest. See "What step 1
+   settled" below. ← **next is step 2**
 2. First eval cases + scoring script; baseline the existing rules
 3. Catalog-driven LLM layer with structured output; compare against the baseline
 4. Real-repo tier (fix-commit mining)
@@ -156,6 +159,47 @@ harness and the MCP server — tight run-test-fix loops, and Claude Code is itse
 an MCP client, which makes it useful for testing the server.
 
 ---
+
+## What step 1 settled
+
+Building the loader forced four decisions that the plan had left implicit. All
+four are now enforced by tests rather than convention.
+
+**The catalog moved into the package.** `src/preflight/defects/`, read through
+`importlib.resources`. The pip case was already noted; the container case was
+worse — the Dockerfile copies `src` and nothing else, so a top-level `defects/`
+would have broken the image while every local run kept working. A test asserts
+the directory sits inside the package, and the wheel was checked to confirm all
+fifteen files ship.
+
+**Stack tokens are a closed vocabulary with an honest partial mapping.** The
+catalog uses ten tokens; the fingerprinter models framework, backend, auth and
+payments. Three tokens — `express`, `serverless`, `vue` — name things it cannot
+detect at all, and `react` is not one framework but three. Since the tokens are a
+disjunction and `Applicability` conjoins its dimensions, an entry mentioning an
+undetectable token now produces **no** gate rather than a narrowed one: narrowing
+would skip the check on exactly the projects we failed to identify. A test also
+forbids any entry from constraining more than one dimension, because that is
+where "or" in the catalog would silently become "and" in the engine.
+
+**Globs needed a different matcher.** Written as `**/*.{js,ts}` and
+`supabase/migrations/**/*.sql`, the catalog's patterns matched *nothing*:
+`PurePath.match` treats a mid-pattern `**` as a single `*` and understands no
+brace alternation. `FileIndex.matching` now expands braces and matches with
+gitignore semantics via `pathspec`. Every pattern is checked against the fixture
+corpus, and the ones that reach nothing are listed — a shopping list for fixtures
+rather than a silent failure.
+
+**The catalog and the rules disagree about severity in three places.** Recorded
+in `KNOWN_SEVERITY_DISAGREEMENTS`, not papered over:
+
+| Entry | Catalog | Rule | The question |
+|---|---|---|---|
+| SEC-002 | fatal | serious | Is a browser-reachable third-party key Tier 1 or Tier 2? The spec says Tier 2. |
+| SEC-003 | serious | fatal | Is a committed `.env` less severe than a hardcoded key? The rule treats them alike. |
+| PAY-001 | fatal | serious | Spec section 5 puts webhook verification in Tier 2; the catalog calls it critical. |
+
+Resolve each deliberately and delete its entry from the test.
 
 ## Open question this plan raises
 

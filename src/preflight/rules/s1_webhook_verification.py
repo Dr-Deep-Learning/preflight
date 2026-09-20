@@ -133,6 +133,7 @@ class UnverifiedPaymentWebhook:
     applicability: Applicability = Applicability(
         payments=frozenset({PaymentProvider.STRIPE, PaymentProvider.PADDLE})
     )
+    catalog_ids: tuple[str, ...] = ("PAY-001",)
     limits: tuple[str, ...] = (
         "Only Stripe and Paddle webhook handlers are recognised. A provider called over "
         "raw HTTP with no SDK dependency declared is not checked at all.",
