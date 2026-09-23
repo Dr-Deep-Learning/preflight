@@ -61,8 +61,29 @@ def test_one_row_in_an_identity_table_is_the_trigger(repo):
     disclosure, and there is no count at which that stops being true."""
     (finding,) = findings_for(repo("prisma/dev.db", {"users": 1}))
     assert finding.severity is Severity.FATAL
-    assert finding.blast_radius is BlastRadius.TOTAL
     assert finding.confidence is Confidence.CONFIRMED
+
+
+def test_a_single_user_row_is_not_a_whole_database_exposure(repo):
+    """Severity and blast radius answer different questions. One `users` row is
+    almost always the author's own test account; TOTAL reads as "every user's
+    records" and would be an overstatement, which is how a true finding gets
+    dismissed along with everything else in the report."""
+    (one,) = findings_for(repo("prisma/dev.db", {"users": 1}))
+    assert one.blast_radius is BlastRadius.BROAD
+    assert one.severity is Severity.FATAL, "still fatal -- it is a person's record"
+
+
+def test_more_than_one_person_is_a_whole_database_exposure(repo):
+    (finding,) = findings_for(repo("prisma/dev.db", {"users": 2}))
+    assert finding.blast_radius is BlastRadius.TOTAL
+
+
+def test_a_single_row_is_not_described_as_rows(repo):
+    """Found by reading a real report: `artists` (1 rows)."""
+    (finding,) = findings_for(repo("prisma/dev.db", {"users": 1}))
+    assert "(1 row)" in finding.summary
+    assert "1 rows" not in finding.summary
 
 
 def test_row_count_scales_severity_not_the_gate(repo):
