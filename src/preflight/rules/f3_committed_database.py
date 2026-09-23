@@ -277,7 +277,16 @@ class CommittedDatabase:
     @staticmethod
     def _weigh(db: _Database, *, fixture: bool) -> tuple[Severity, BlastRadius]:
         if db.identity:
-            severity, radius = Severity.FATAL, BlastRadius.TOTAL
+            # Any row about a person is FATAL -- that is the trigger, and it has
+            # no threshold. Blast radius is a different question: it says how
+            # many people this reaches, and TOTAL reads as "every user's
+            # records". A database whose `users` table holds one row is almost
+            # always the author's own test account, and calling that a
+            # whole-database exposure is the kind of overstatement that gets a
+            # report dismissed along with the true findings in it.
+            people = max(rows for _, rows in db.identity)
+            severity = Severity.FATAL
+            radius = BlastRadius.TOTAL if people > 1 else BlastRadius.BROAD
         elif db.populated:
             severity, radius = Severity.SERIOUS, BlastRadius.BROAD
         else:
@@ -325,7 +334,10 @@ class CommittedDatabase:
         summary = (
             f"{whereabouts}, so every row in it is in each clone and fork of this "
             "repository. It holds "
-            + ", ".join(f"`{name}` ({rows} rows)" for name, rows in db.populated[:5])
+            + ", ".join(
+                f"`{name}` ({rows} row{'' if rows == 1 else 's'})"
+                for name, rows in db.populated[:5]
+            )
             + (" and other tables" if len(db.populated) > 5 else "")
             + ". "
         )

@@ -261,7 +261,9 @@ def triage_sheet(results: list[Surveyed]) -> str:
             continue
         for finding in record.result["findings"]:
             first = finding["evidence"][0] if finding["evidence"] else {}
-            where = f"{first.get('path', '')}:{first.get('line', '')}".rstrip(":")
+            # A file-level finding has no line. `path:None` is not a location.
+            line = first.get("line")
+            where = f"{first.get('path', '')}:{line}" if line else first.get("path", "")
             lines.append(
                 f"{head} {finding['rule_id']} | {catalog.get(finding['rule_id'], '')} | "
                 f"{finding['title']} | {finding['confidence']} | `{where}` | | |"
