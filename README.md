@@ -91,6 +91,7 @@ current set; `GET /rules` serves it as JSON.
 |----|------|-------|---------|
 | **F1** | Fatal | Database access control | Tables created in SQL migrations with no `ENABLE ROW LEVEL SECURITY`, including the case where a policy exists but RLS was never enabled, so the policy is inert. Migrations are grouped per application, so a repository holding several apps is analysed as several databases rather than one |
 | **F2** | Fatal | Privileged key exposure | Service-role JWTs, PEM private keys, Postgres URLs with passwords, AWS keys and Stripe secret keys written into source; environment files tracked by git |
+| **F3** | Fatal | Application database in the repository | A SQLite database tracked by git. Table names and row counts are read; no column value ever is. A non-empty table named for people (`users`, `sessions`, `customers`) is the trigger — one row, not a threshold, because there is no count at which a stranger's record stops being a disclosure. Row count sets severity; a path under `fixtures/`, `seeds/` or `test/` lowers it by one level and never silences it |
 | **S1** | Serious | Payment webhook verification | Stripe and Paddle webhook handlers that trust the request body without calling `constructEvent` / `unmarshal` or comparing an HMAC — so a forged `checkout.session.completed` would be believed |
 | **S2** | Serious | Third-party key exposure | LLM, email, SMS and maps keys in code that ships to the browser, and secrets named with a `NEXT_PUBLIC_` / `VITE_` prefix that the bundler will inline |
 
@@ -265,8 +266,8 @@ Deliberately deferred. The design is settled; the code is not written.
 
 | Deferred | Design |
 |---|---|
-| **F3** server-side authorization | Endpoints that check authentication but not *ownership*. Needs call-graph analysis of route handlers, not pattern matching; the parser work is the reason it is not in week one. |
-| **F4** public admin surface | Route enumeration plus an unauthenticated request per candidate. Requires the URL-probe ingestion mode and therefore ownership verification first. |
+| **F4** server-side authorization | Endpoints that check authentication but not *ownership*. Needs call-graph analysis of route handlers, not pattern matching; the parser work is the reason it is not in week one. |
+| **F5** public admin surface | Route enumeration plus an unauthenticated request per candidate. Requires the URL-probe ingestion mode and therefore ownership verification first. |
 | **S3–S5, Tier 3** | String-built SQL, dependency integrity, auth configuration, headers, CORS, rate limits. Each is a module in `rules/`; none needs an architectural change. |
 | **Mode B** backend connect | A read-only Supabase credential scoped to schema and policy inspection. Turns F1 from unverified into confirmed, and is the highest-value item on this list. |
 | **Mode C** URL probe | Client-bundle analysis and header inspection on a deployed app. Gated behind ownership verification by DNS TXT or a file served at a known path — no exceptions, including demos. |

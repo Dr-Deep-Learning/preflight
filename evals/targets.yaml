@@ -15,3 +15,15 @@
 - url: https://github.com/Dr-Deep-Learning/preflight
   sha: 9fe89d7
   note: "worked example - this repo. Expect the fixture corpus to light up."
+  
+- url: https://github.com/NassimEH/WeListenMusic
+  sha: cf0df1b94c31691df17f7e93f5e693ad8fb4b594
+  note: feat enhance RemixPage UI with improved styling and layout for remix cards and song cards Jul 26, 2025
+
+- url: https://github.com/eryngordon/quiz-lead-magnet-maker
+  sha: 222fc220bbf0a85ca63943924171e6fbf80eb0ce
+  note: Fix Update Paris results page banner committed on Apr 17, 2025
+  
+- url: https://github.com/Githubritesh2002/resume-maximizer-tool
+  sha: cc2a5bccd73f445667c6628343a969e188a66931
+  note: Fix Resolve Accordion import errors on Mar 16, 2025

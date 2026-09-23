@@ -240,7 +240,20 @@ class SecretMatch:
     line: str
 
 
-def _looks_like_placeholder(value: str) -> bool:
+def looks_like_placeholder(value: str) -> bool:
+    """True for a value that is obviously a stand-in, not a credential.
+
+    Used on two paths that must agree: the pattern matcher, which knows the
+    shape a real key has, and the name-only fallback in `_shared`, which does
+    not. A file of `your-google-client-secret` dummies is the single most
+    common shape of a committed `.env` in this population; reporting it as a
+    confirmed FATAL is the false positive that discredits the whole report.
+
+    >>> looks_like_placeholder("your-api-key-here")
+    True
+    >>> looks_like_placeholder("sk_live_51H8xQ2KZ")
+    False
+    """
     lowered = value.lower()
     return any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
 
@@ -266,7 +279,7 @@ def iter_secret_matches(
             if any(span[0] < end and start < span[1] for start, end in claimed):
                 continue
             value = match.group(0)
-            if _looks_like_placeholder(value) or not pattern.confirm(value):
+            if looks_like_placeholder(value) or not pattern.confirm(value):
                 continue
             claimed.append(span)
             number = _line_number(line_starts, span[0])

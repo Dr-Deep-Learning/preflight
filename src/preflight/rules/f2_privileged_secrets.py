@@ -93,7 +93,12 @@ class PrivilegedSecretExposure:
                     for number, name, _line in named
                 ]
 
+            # Two independent unknowns. Whether the file is committed is a fact
+            # git answers. Whether it holds a live credential is a guess unless a
+            # value matched a known shape -- so a name-only hit is never CONFIRMED,
+            # however certain we are that the file is tracked.
             confirmed = tracked is True
+            value_shape_known = bool(matches)
             yield Finding(
                 rule_id=self.id,
                 title=(
@@ -102,10 +107,21 @@ class PrivilegedSecretExposure:
                     else "Environment file may be committed to git"
                 ),
                 severity=Severity.FATAL,
-                confidence=Confidence.CONFIRMED if confirmed else Confidence.UNVERIFIED,
+                confidence=(
+                    Confidence.CONFIRMED
+                    if confirmed and value_shape_known
+                    else Confidence.UNVERIFIED
+                ),
                 summary=(
                     f"`{path}` is tracked by git, so every secret in it is in your repository's "
                     "history and in every clone and fork of it."
+                    + (
+                        ""
+                        if value_shape_known
+                        else " None of the values look like a real key, so this may be a template "
+                        "committed on purpose -- but the variables below are named as credentials, "
+                        "so check them before you ship."
+                    )
                     if confirmed
                     else f"`{path}` exists and this project is not a git repository we could read, "
                     "so we could not tell whether it has been committed. Check manually."
