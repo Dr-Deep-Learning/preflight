@@ -1,5 +1,7 @@
 """F2: privileged credentials in source, and environment files under git."""
 
+import subprocess
+
 from conftest import SERVICE_ROLE_JWT, context_for
 from preflight.engine import REGISTRY
 from preflight.models import BlastRadius, Confidence, Severity
@@ -66,6 +68,58 @@ def test_env_file_tracked_by_git_is_confirmed(git_project):
     assert finding.confidence is Confidence.CONFIRMED
     assert "committed to git" in finding.title
     assert "git rm --cached" in finding.remediation.fix
+
+
+# -- placeholder .env files ------------------------------------------------
+#
+# These four tests exist because of a real false positive. Surveying public
+# AI-built repositories, the only "confirmed FATAL" the scanner produced in the
+# whole sample was a committed `.env` whose every value read `your-<name>-here`.
+# The name-only fallback path had no test coverage at all, which is how a rule
+# that already knew what a placeholder looks like managed to report one anyway.
+
+PLACEHOLDER_ENV = """\
+# Authentication
+BETTER_AUTH_SECRET=your-super-secret-key-change-this
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+GITHUB_CLIENT_SECRET=your-github-client-secret
+CLOUDINARY_API_KEY=your-cloudinary-api-key
+CLOUDINARY_API_SECRET=your-cloudinary-api-secret
+"""
+
+
+def _committed(tmp_path, env_text):
+    (tmp_path / "package.json").write_text('{"dependencies": {"vite": "^5.0.0"}}')
+    (tmp_path / ".env").write_text(env_text)
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "add", "-A", "-f"], cwd=tmp_path, check=True)
+    return context_for(tmp_path)
+
+
+def test_a_committed_env_of_placeholders_is_not_a_finding(tmp_path):
+    """Verbatim from NassimEH/WeListenMusic@cf0df1b9, the false positive itself."""
+    assert findings_for(_committed(tmp_path, PLACEHOLDER_ENV)) == []
+
+
+def test_one_real_value_among_placeholders_still_reports(tmp_path):
+    """Suppressing placeholders must not suppress the file they are sitting in."""
+    env = PLACEHOLDER_ENV + f"SUPABASE_SERVICE_ROLE_KEY={SERVICE_ROLE_JWT}\n"
+    (finding,) = by_title(findings_for(_committed(tmp_path, env)), "Environment file")
+    assert finding.confidence is Confidence.CONFIRMED
+    assert [e.line for e in finding.evidence] == [7]
+
+
+def test_a_credential_shaped_name_with_an_unrecognised_value_is_unverified(tmp_path):
+    """The file is committed -- a fact. That it holds a live key is a guess."""
+    env = "ACME_API_KEY=k83nfj20dkeo1p\n"
+    (finding,) = by_title(findings_for(_committed(tmp_path, env)), "Environment file")
+    assert finding.confidence is Confidence.UNVERIFIED
+    assert "committed to git" in finding.title
+    assert "None of the values look like a real key" in finding.summary
+
+
+def test_the_placeholder_rule_is_the_one_documented_in_limits():
+    assert any("placeholder" in limit for limit in RULE.limits)
 
 
 def test_example_env_files_are_ignored(vulnerable_ctx):

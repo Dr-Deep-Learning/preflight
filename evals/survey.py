@@ -72,8 +72,27 @@ class Target:
 class Surveyed:
     target: Target
     fingerprints: list[str] = field(default_factory=list)
+    #: Declared version of each builder's marker dependency, e.g. lovable-tagger.
+    #: A *range* ("^1.1.7"), not a resolved version -- the lockfile has that, and
+    #: half these repos do not commit one. Enough to separate eras, not enough to
+    #: pin a build.
+    builder_versions: dict[str, str] = field(default_factory=dict)
+    committed_at: str = ""
     result: dict[str, Any] | None = None
     error: str | None = None
+
+    @property
+    def coverage(self) -> tuple[int, int]:
+        """(rules that ran, rules in the ruleset) for this target's stack.
+
+        The number that explains a clean report. Two of four rules running
+        because the stack has no Supabase backend is not evidence the app is
+        safe; it is evidence the ruleset had nothing to say about it.
+        """
+        if self.result is None:
+            return (0, 0)
+        checks = self.result["checks"]
+        return (sum(1 for c in checks if c["status"] != "skipped"), len(checks))
 
 
 def run(args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -109,6 +128,30 @@ def detect_fingerprints(root: Path) -> list[str]:
                 found.append(f"{builder} ({marker})")
                 break
     return found
+
+
+#: Marker dependency per builder, read out of package.json as a version proxy.
+BUILDER_MARKER_DEPS = {"lovable": "lovable-tagger", "v0": "v0-sdk"}
+
+
+def builder_versions(root: Path) -> dict[str, str]:
+    """Declared version of each builder's marker dependency, if package.json has one."""
+    manifest = root / "package.json"
+    if not manifest.is_file():
+        return {}
+    try:
+        pkg = json.loads(manifest.read_text(encoding="utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return {}
+    deps = {**pkg.get("dependencies", {}), **pkg.get("devDependencies", {})}
+    return {builder: str(deps[dep]) for builder, dep in BUILDER_MARKER_DEPS.items() if dep in deps}
+
+
+def committed_at(root: Path, sha: str) -> str:
+    """Author date of the pinned commit, ISO-8601. The other era proxy, and the
+    honest one: a version range tells you what was declared, not when."""
+    shown = run(["git", "show", "-s", "--format=%as", sha], cwd=root)
+    return shown.stdout.strip() if shown.returncode == 0 else ""
 
 
 def scan(root: Path) -> dict[str, Any]:
@@ -147,6 +190,8 @@ def survey(targets: list[Target], out: Path) -> list[Surveyed]:
             try:
                 clone_at(target.url, target.sha, root)
                 record.fingerprints = detect_fingerprints(root)
+                record.builder_versions = builder_versions(root)
+                record.committed_at = committed_at(root, target.sha)
                 record.result = scan(root)
             except (RuntimeError, OSError, json.JSONDecodeError) as exc:
                 record.error = str(exc)
@@ -156,7 +201,11 @@ def survey(targets: list[Target], out: Path) -> list[Surveyed]:
                 json.dumps(record.result, indent=2), encoding="utf-8"
             )
             findings = len(record.result["findings"])
-            print(f"   {findings} findings, fingerprints: {record.fingerprints or 'none'}")
+            ran, total = record.coverage
+            print(
+                f"   {findings} findings, {ran}/{total} rules applicable, "
+                f"fingerprints: {record.fingerprints or 'none'}"
+            )
         results.append(record)
 
     return results
@@ -187,33 +236,41 @@ def triage_sheet(results: list[Surveyed]) -> str:
         "> A finding that turns out to be a **live** credential is a real exposure.",
         "> Disclose privately. Do not publish the repository name with it.",
         "",
-        "| Repo | SHA | Builder evidence | Rule | Catalog | Finding "
-        "| Confidence | Where | Verdict | Note |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Repo | SHA | Date | Builder | Version | Rules ran | Rule | Catalog "
+        "| Finding | Confidence | Where | Verdict | Note |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
 
     for record in results:
         repo = record.target.url.rstrip("/").removesuffix(".git").rsplit("/", 1)[-1]
         sha = record.target.sha[:8]
-        evidence = "; ".join(record.fingerprints) or "**none**"
+        builders = ", ".join(b.split(" ")[0] for b in record.fingerprints) or "**none**"
+        versions = ", ".join(f"{k} {v}" for k, v in record.builder_versions.items()) or "—"
+        # Leading columns repeat on every row of a repo so the sheet can be
+        # pasted into a spreadsheet and grouped without further editing.
+        head = f"| {repo} | {sha} | {record.committed_at or '—'} | {builders} | {versions} |"
+
         if record.error is not None:
-            lines.append(f"| {repo} | {sha} | {evidence} | — | — | _{record.error}_ | | | | |")
+            lines.append(f"{head} — | — | — | _{record.error}_ | | | | |")
             continue
         assert record.result is not None
+        ran, total = record.coverage
+        head += f" {ran}/{total} |"
         if not record.result["findings"]:
-            lines.append(f"| {repo} | {sha} | {evidence} | — | — | _clean_ | | | | |")
+            lines.append(f"{head} — | — | _clean_ | | | | |")
             continue
         for finding in record.result["findings"]:
             first = finding["evidence"][0] if finding["evidence"] else {}
             where = f"{first.get('path', '')}:{first.get('line', '')}".rstrip(":")
             lines.append(
-                f"| {repo} | {sha} | {evidence} | {finding['rule_id']} | "
-                f"{catalog.get(finding['rule_id'], '')} | {finding['title']} | "
-                f"{finding['confidence']} | `{where}` | | |"
+                f"{head} {finding['rule_id']} | {catalog.get(finding['rule_id'], '')} | "
+                f"{finding['title']} | {finding['confidence']} | `{where}` | | |"
             )
 
     scanned = [r for r in results if r.error is None]
     total = sum(len(r.result["findings"]) for r in scanned if r.result is not None)
+    applicable = sum(r.coverage[0] for r in scanned)
+    possible = sum(r.coverage[1] for r in scanned)
     lines += [
         "",
         f"**{len(scanned)} of {len(results)} repositories scanned, {total} findings to triage.**",
@@ -222,6 +279,17 @@ def triage_sheet(results: list[Surveyed]) -> str:
         f"{sum(1 for r in scanned if r.fingerprints)} of {len(scanned)}. A repository with no",
         "builder evidence is not part of the population and its findings should be",
         "reported separately, if at all.",
+        "",
+        f"**Rule coverage: {applicable} of {possible} rule-target pairs were applicable.**",
+        "A clean report on a target where half the ruleset was skipped is a",
+        "statement about the ruleset's stack coverage, not about the app.",
+        "",
+        "> **Sampling.** These numbers describe the targets in `targets.yaml` and",
+        "> nothing else. Hand-picked targets, and targets chosen by looking until",
+        "> something was found, do not support a claim about how common a defect",
+        "> is -- only about whether this scanner is right when it speaks. Publish",
+        "> precision from this sheet; publish a rate only from a sampling frame",
+        "> fixed before the first scan.",
     ]
     return "\n".join(lines) + "\n"
 

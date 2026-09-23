@@ -29,7 +29,7 @@ def test_health(client):
 
 def test_rules_endpoint_publishes_the_ruleset(client):
     body = client.get("/rules").json()
-    assert [r["id"] for r in body["rules"]] == ["F1", "F2", "S1", "S2"]
+    assert [r["id"] for r in body["rules"]] == ["F1", "F2", "F3", "S1", "S2"]
     assert all(r["limits"] for r in body["rules"])
     # Rules report in the catalog's vocabulary, so a published ruleset can be
     # compared against a published catalog.

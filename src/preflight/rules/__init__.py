@@ -8,6 +8,7 @@ means adding a module and one line here.
 from preflight.rules import (
     f1_row_level_security,
     f2_privileged_secrets,
+    f3_committed_database,
     s1_webhook_verification,
     s2_client_side_keys,
 )
@@ -15,6 +16,7 @@ from preflight.rules import (
 __all__ = [
     "f1_row_level_security",
     "f2_privileged_secrets",
+    "f3_committed_database",
     "s1_webhook_verification",
     "s2_client_side_keys",
 ]

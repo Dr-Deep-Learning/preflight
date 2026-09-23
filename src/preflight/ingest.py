@@ -84,6 +84,16 @@ TEXT_SUFFIXES = frozenset(
 
 MAX_FILE_BYTES = 1_000_000
 
+#: Data files that are not source and are never read as text, but whose presence
+#: in a repository is itself the finding. Indexed separately from `TEXT_SUFFIXES`
+#: for two reasons: decoding a database as UTF-8 produces byte soup that trips
+#: pattern-matching rules, and a real one is far larger than `MAX_FILE_BYTES`.
+DATA_SUFFIXES = frozenset({".db", ".db3", ".sqlite", ".sqlite3"})
+
+#: A database big enough to make `COUNT(*)` slow is already a finding; past this
+#: the file is recorded by size alone and never opened.
+MAX_DATA_FILE_BYTES = 256_000_000
+
 _BRACE_GROUP = re.compile(r"\{([^{}]*)\}")
 
 
@@ -181,6 +191,10 @@ class FileIndex:
 
     root: Path
     paths: tuple[str, ...]
+    #: Committed data files (databases). Not in `paths`: nothing may read these
+    #: as text, and every text-oriented helper on this class would be wrong
+    #: about them.
+    data_paths: tuple[str, ...] = ()
     _cache: dict[str, str] = field(default_factory=dict, repr=False)
 
     def read_text(self, relpath: str) -> str:
@@ -209,15 +223,33 @@ class FileIndex:
         semantics are what anyone writing these patterns already expects, and
         `pathspec` implements them: a pattern containing a slash is anchored to
         the project root, one without it matches at any depth.
+
+        Spans `data_paths` as well as `paths`: this is a question about paths,
+        and a catalog pattern for `**/*.sqlite3` should reach a file that is in
+        the project. Reading is the operation that must not cross that line --
+        `read_text` on a database returns replacement characters, which is why
+        the two lists exist at all.
         """
         patterns: list[str] = []
         for glob in globs:
             patterns.extend(expand_braces(glob))
         spec = pathspec.PathSpec.from_lines("gitignore", patterns)
-        return tuple(p for p in self.paths if spec.match_file(p))
+        return tuple(p for p in (*self.paths, *self.data_paths) if spec.match_file(p))
 
     def exists(self, relpath: str) -> bool:
         return relpath in set(self.paths)
+
+    def data_with_suffix(self, *suffixes: str) -> tuple[str, ...]:
+        wanted = {s.lower() for s in suffixes}
+        return tuple(p for p in self.data_paths if PurePosixPath(p).suffix.lower() in wanted)
+
+    def size_of(self, relpath: str) -> int:
+        """Size in bytes, or 0 if unreadable. The only fact about a data file
+        this class will report without the file being opened."""
+        try:
+            return (self.root / relpath).stat().st_size
+        except OSError:
+            return 0
 
 
 class SourceLoader(Protocol):
@@ -237,11 +269,19 @@ class LocalDirectorySource:
         root = self.root.resolve()
         if not root.is_dir():
             raise ScanTargetError(f"not a directory: {root}")
-        return root, FileIndex(root=root, paths=tuple(_walk(root))), read_git_info(root)
+        text, data = _walk(root)
+        return (
+            root,
+            FileIndex(root=root, paths=tuple(text), data_paths=tuple(data)),
+            read_git_info(root),
+        )
 
 
-def _walk(root: Path) -> list[str]:
+def _walk(root: Path) -> tuple[list[str], list[str]]:
+    """Return (text files, data files). Two lists, because they obey different
+    size limits and only one of them is ever decoded."""
     found: list[str] = []
+    data: list[str] = []
     stack: list[Path] = [root]
     while stack:
         current = stack.pop()
@@ -258,7 +298,11 @@ def _walk(root: Path) -> list[str]:
                 continue
             if not entry.is_file():
                 continue
-            if entry.suffix.lower() not in TEXT_SUFFIXES and not entry.name.startswith(".env"):
+            suffix = entry.suffix.lower()
+            if suffix in DATA_SUFFIXES:
+                data.append(entry.relative_to(root).as_posix())
+                continue
+            if suffix not in TEXT_SUFFIXES and not entry.name.startswith(".env"):
                 continue
             try:
                 if entry.stat().st_size > MAX_FILE_BYTES:
@@ -266,7 +310,7 @@ def _walk(root: Path) -> list[str]:
             except OSError:
                 continue
             found.append(entry.relative_to(root).as_posix())
-    return sorted(found)
+    return sorted(found), sorted(data)
 
 
 def resolve_target(raw: str | Path, allowed_roots: list[Path] | None = None) -> Path:

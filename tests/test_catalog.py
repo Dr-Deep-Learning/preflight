@@ -216,7 +216,7 @@ def test_every_rule_declares_catalog_ids_that_exist():
 
 def test_the_implemented_catalog_entries_are_the_documented_ones():
     implemented = {cid for rule in REGISTRY for cid in rule.catalog_ids}
-    assert implemented == {"AUTH-001", "SEC-001", "SEC-002", "SEC-003", "PAY-001"}
+    assert implemented == {"AUTH-001", "SEC-001", "SEC-002", "SEC-003", "SEC-004", "PAY-001"}
 
 
 def test_no_two_rules_claim_the_same_catalog_entry():
@@ -272,6 +272,11 @@ def test_catalog_and_rule_severities_agree_except_where_recorded():
 #: which is how a brace typo or a bad `**` gets caught.
 PATTERNS_NOT_EXERCISED_BY_THE_CORPUS = {
     ".env.*.local",
+    # The corpus commits one database, `data/app.db`, so `**/*.db` is
+    # exercised and its three siblings are not.
+    "**/*.db3",
+    "**/*.sqlite",
+    "**/*.sqlite3",
     ".env.production",
     ".gitignore",
     "**/*.jsx",

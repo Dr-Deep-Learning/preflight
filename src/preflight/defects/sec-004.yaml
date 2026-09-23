@@ -1,0 +1,40 @@
+id: SEC-004
+title: Application database committed to the repository
+category: secrets
+severity: critical
+detector: rule
+status: active
+applies_to:
+  stacks: [any]
+  globs: ["**/*.{db,db3,sqlite,sqlite3}"]
+cwe: [200, 359]
+description: >
+  A SQLite database file containing application data is tracked by git. Anyone
+  who can clone the repository downloads the rows: user records, session tokens,
+  password hashes, order history. Unlike a leaked key, this cannot be rotated --
+  the data is already copied, and deleting the file does not remove it from
+  history.
+why_ai_apps: >
+  Local-first defaults put the database inside the project directory --
+  `prisma/dev.db`, `db.sqlite3`, `data/app.db` -- where the generated
+  `.gitignore` often does not cover it. `git add -A` then commits it. The author
+  sees a working app and a green push; nothing in the tooling says that the
+  file they just published holds every row they entered while testing, including
+  the accounts of the first real people who tried the app.
+bad_example: |
+  $ git ls-files | grep dev.db
+  prisma/dev.db          # 412 rows in `users`, public since March
+good_example: |
+  # .gitignore
+  *.db
+  *.sqlite3
+  prisma/dev.db
+false_positive_notes: >
+  Schema-only databases with no rows are a hygiene issue, not an exposure, and
+  are reported as such. Seed and test fixtures under fixtures/, seeds/, test/ or
+  named *sample*/*demo*/*mock* are downgraded on path evidence alone: the
+  contents are never inspected, so a fixture cannot be distinguished from real
+  data by reading it. Non-SQLite files that happen to end in `.db` are skipped.
+references:
+  - https://cwe.mitre.org/data/definitions/200.html
+  - https://cwe.mitre.org/data/definitions/359.html

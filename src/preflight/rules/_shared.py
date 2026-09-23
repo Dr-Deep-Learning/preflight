@@ -18,7 +18,7 @@ import re
 
 from preflight.models import Evidence
 from preflight.redact import redact_in_line
-from preflight.rules.secrets import SecretMatch
+from preflight.rules.secrets import SecretMatch, looks_like_placeholder
 
 EXAMPLE_ENV_SUFFIXES = (".example", ".sample", ".template", ".dist")
 
@@ -84,7 +84,13 @@ def secretish_assignments(text: str) -> list[tuple[int, str, str]]:
         name = match.group("name")
         if name in KNOWN_SAFE_PUBLIC:
             continue
-        if not match.group("value").strip().strip("\"'"):
+        value = match.group("value").strip().strip("\"'")
+        if not value:
+            continue
+        if looks_like_placeholder(value):
+            # `GOOGLE_CLIENT_SECRET=your-google-client-secret` names a credential
+            # and holds nothing. Surveying real repositories, this was every value
+            # in the only .env the scanner flagged -- see docs/PLAN.md.
             continue
         found.append((number, name, line))
     return found

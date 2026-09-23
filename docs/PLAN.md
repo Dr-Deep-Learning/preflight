@@ -222,3 +222,111 @@ updated to match, not a drift. One way to keep both:
 
 Decide this before step 3, because it determines what the eval harness in step 2
 is measuring.
+
+## What the first real-repo survey settled
+
+Four targets, three of them fingerprint-confirmed Lovable apps, scanned at
+pinned SHAs. Five findings. The useful results were all negative ones.
+
+**The only confirmed finding on a real repository was a false positive.**
+`NassimEH/WeListenMusic@cf0df1b9` commits a `.env` whose every value reads
+`your-<name>-here`. F2 reported it FATAL / confirmed / TOTAL blast radius.
+Root cause: `secretish_assignments` matched on the variable *name* and only
+checked that the value was non-empty — it never called the placeholder test
+that lives three modules away and that the pattern matcher has used all
+along. Two code paths disagreed about the same question. Fixed in ruleset
+`2026.09.3`, with the file's real contents as the regression fixture.
+
+That path had **zero test coverage**. The one branch that fired first on
+real-world input was the one branch the fixture corpus never reached. This
+is the argument for the survey existing at all: a corpus you wrote yourself
+exercises the code you were thinking about.
+
+**A name-only hit is now UNVERIFIED, never CONFIRMED.** Whether a file is
+tracked by git is a fact; whether it holds a live credential is a separate
+question, and matching a variable *name* does not answer it. The two were
+collapsed into one flag. They are now two.
+
+**Rule coverage is the number that explains a clean report.** Nine of
+sixteen rule-target pairs were applicable. Every Lovable target ran two of
+four rules, because F1 and S1 gate on Supabase and Stripe. A clean verdict
+on a target where half the ruleset was skipped says nothing about the app.
+`survey.py` now prints this ratio, and the triage sheet carries it per row.
+
+**Pin HEAD, not an interesting-looking old commit.**
+`eryngordon/quiz-lead-magnet-maker@222fc22` (April 2025) came back clean and
+applicable-2-of-4. It had no backend at all at that SHA; the repo grew a
+Supabase integration later. The scan was honest and nearly vacuous.
+
+### Two hypotheses about *who* ships insecure apps
+
+Both were proposed from the survey and neither survives it:
+
+1. *Older builder versions were less careful.* All three Lovable targets
+   declare `lovable-tagger ^1.1.7`. The sheet now carries a Version column,
+   so this is visible rather than argued. The initial `^0.0.1` reading was a
+   misread.
+2. *Authors with few public repositories make these mistakes.* Possibly
+   true, unmeasurable here, and not actionable — the scanner cannot
+   condition on an author's GitHub history. It is also confounded with
+   everything else that distinguishes a throwaway repo from a real one.
+
+The deeper problem with both is the sampling, not the variable. Targets were
+hand-picked, and picked by looking until something was found. That procedure
+**cannot** produce a base rate; it can only produce precision. So:
+
+> Precision may be published from the triage sheet. A *rate* — "N% of
+> AI-built apps ship with X" — may be published only from a sampling frame
+> fixed before the first scan: enumerate repositories whose `package.json`
+> depends on `lovable-tagger`, order them by a fixed key, take the first N,
+> pin each at its default-branch HEAD, scan all N, report all N including
+> the clean ones.
+
+Until that exists, the honest headline is a precision number and a scope
+statement, not a prevalence claim.
+
+### Disclosure log
+
+- `WeListenMusic` — placeholders only. No live credential. Nothing to
+  disclose; the finding was ours, not theirs.
+- `resume-maximizer-tool` — a 39-character `AIzaSy`-prefixed Google API key
+  hardcoded in `src/utils/geminiAI.ts`, public since March 2025. Correct
+  shape for a live key. **Not tested, and must not be.** Private disclosure
+  to the owner; the repository name does not appear in any published
+  aggregate.
+
+### Gap this survey opened — now closed as F3
+
+`WeListenMusic` commits `prisma/dev.db`, a SQLite database, and runs
+better-auth + Prisma + Postgres. Two gaps at once: no rule covers a
+committed database file, and the catalog's stack vocabulary has no entry for
+this backend, so F1's whole question — who can read these rows — was never
+asked. A committed-database rule is cheap, stack-independent, and would have
+been the one true finding in that repo.
+
+**Built, as F3 / SEC-004, in ruleset `2026.09.4`.** Three decisions are worth
+recording because each of them was a choice not to do the easier thing:
+
+* *The contents are never read.* Table names and `COUNT(*)`, no column values.
+  That is the project's scope statement applied to a case where breaking it
+  would have been useful: the signal that separates seeded demo rows from real
+  ones (do the addresses all end in `@example.com`?) lives in the values. The
+  rule therefore cannot tell them apart, and says so in the finding instead of
+  guessing.
+* *One row is the trigger, not a threshold.* No count exists at which a
+  stranger's record stops being a disclosure, or at which seed data becomes
+  real, so any number would have been chosen to feel reasonable and defend
+  nothing. The count sets severity and blast radius; it does not open the gate.
+* *Path lowers the finding, never raises it and never silences it.* `test.db`
+  full of real rows is a mistake people make.
+
+Ingestion changed to support it: the file index was text-only (suffix
+allow-list, 1 MB cap), so a database was invisible to every rule. `FileIndex`
+now carries a separate `data_paths` list with its own size limit — separate
+because decoding a database as UTF-8 produces byte soup that would trip the
+pattern-matching rules. `matching()` spans both, since it asks about paths.
+
+The corpus fixture demonstrates the path rule against itself:
+`fixtures/vulnerable-app/data/app.db` is FATAL when the app is scanned on its
+own and SERIOUS when this repository is scanned, because the second path runs
+through `fixtures/`. Both are correct.
