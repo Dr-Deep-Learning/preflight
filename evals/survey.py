@@ -220,6 +220,22 @@ def catalog_ids_by_rule() -> dict[str, str]:
     return {rule.id: ", ".join(rule.catalog_ids) for rule in REGISTRY}
 
 
+def _one_cell(text: str, limit: int = 160) -> str:
+    """Flatten an error into something a markdown table cell can hold.
+
+    Git repeats "not our ref" once per fetch attempt and separates them with
+    newlines, which ends the table row mid-sentence and silently drops every
+    row after it. Collapse, de-duplicate, truncate, and escape the pipe.
+    """
+    seen: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped and stripped not in seen:
+            seen.append(stripped)
+    joined = " ".join(seen).replace("|", "\\|")
+    return joined if len(joined) <= limit else joined[: limit - 1] + "…"
+
+
 def triage_sheet(results: list[Surveyed]) -> str:
     """One row per finding, with an empty verdict column for a human to fill."""
     catalog = catalog_ids_by_rule()
@@ -251,7 +267,7 @@ def triage_sheet(results: list[Surveyed]) -> str:
         head = f"| {repo} | {sha} | {record.committed_at or '—'} | {builders} | {versions} |"
 
         if record.error is not None:
-            lines.append(f"{head} — | — | — | _{record.error}_ | | | | |")
+            lines.append(f"{head} — | — | — | _{_one_cell(record.error)}_ | | | | |")
             continue
         assert record.result is not None
         ran, total = record.coverage
