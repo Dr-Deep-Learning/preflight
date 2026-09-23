@@ -1,0 +1,17 @@
+# Tier 2 survey targets.
+#
+# Every entry needs a PINNED SHA. A branch name is not reproducible: the repo
+# moves, your precision number stops meaning anything, and the finding you cited
+# may no longer exist. Get one with:
+#
+#     git ls-remote https://github.com/OWNER/REPO refs/heads/main
+#
+# Only public repositories, and only static analysis of their source. Nothing
+# here touches a deployed application.
+#
+# The first entry is a worked example so `survey.py` can be smoke-tested before
+# you add real targets. Delete it once you have ten.
+
+- url: https://github.com/Dr-Deep-Learning/preflight
+  sha: 9fe89d7
+  note: "worked example - this repo. Expect the fixture corpus to light up."

@@ -65,11 +65,48 @@ jobs:
           tags: preflight:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      
+      # Health alone proves the process starts. It does not prove the scanner
+      # works inside the image -- the defect catalog is package data, and a
+      # packaging mistake that dropped it would pass a /healthz check while
+      # every real scan failed. So the container is made to actually scan.
       - name: Smoke test the image
         run: |
-          docker run -d --name preflight -p 8000:8000 preflight:ci
+          set -euo pipefail
+          docker run -d --name preflight -p 8000:8000 \
+            -e PREFLIGHT_ALLOWED_ROOTS=/scan \
+            -v "$PWD/fixtures:/scan:ro" preflight:ci
+
           for _ in $(seq 1 30); do
-            curl -fsS http://localhost:8000/healthz && break || sleep 1
+            curl -fsS http://localhost:8000/healthz >/dev/null && break || sleep 1
           done
-          curl -fsS http://localhost:8000/healthz | grep -q '"status":"ok"'
+          curl -fsS http://localhost:8000/healthz | jq -e '.status == "ok"'
+
+          # The catalog must load from installed package data, not a source tree.
+          docker exec preflight python -c \
+            "from preflight.catalog import load_catalog; n = len(load_catalog()); print('catalog entries:', n); assert n >= 15"
+
+          scan () {
+            local id
+            id=$(curl -fsS -X POST http://localhost:8000/scans \
+                   -H 'content-type: application/json' \
+                   -d "{\"path\": \"/scan/$1\"}" | jq -r .scan_id)
+            for _ in $(seq 1 30); do
+              case "$(curl -fsS "http://localhost:8000/scans/$id" | jq -r .state)" in
+                complete) break ;;
+                failed)   echo "::error::scan of $1 failed"; exit 1 ;;
+                *)        sleep 1 ;;
+              esac
+            done
+            curl -fsS "http://localhost:8000/scans/$id"
+          }
+
+          scan vulnerable-app > /tmp/vulnerable.json
+          jq -e '.result.verdict.headline == "Not safe to launch"' /tmp/vulnerable.json
+          jq -e '[.result.findings[].rule_id] | unique == ["F1","F2","S1","S2"]' /tmp/vulnerable.json
+
+          scan clean-app > /tmp/clean.json
+          jq -e '.result.verdict.headline == "Clean"' /tmp/clean.json
+          jq -e '.result.findings | length == 0' /tmp/clean.json
+
           docker rm -f preflight

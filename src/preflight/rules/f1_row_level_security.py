@@ -26,6 +26,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 from preflight.engine import Applicability, ScanContext, register
 from preflight.models import (
@@ -99,6 +100,28 @@ def _looks_like_user_data(table: str) -> bool:
     return any(hint in table for hint in _USER_DATA_HINTS)
 
 
+#: Directory names that mark a migrations folder, so the project above it can be
+#: identified as the owner of those migrations.
+_MIGRATION_DIRS = frozenset({"migrations", "migration"})
+
+
+def _schema_root(relpath: str) -> str:
+    """The project directory owning a migration file -- its database, in effect.
+
+    `apps/web/supabase/migrations/0001.sql` belongs to `apps/web`. A stray `.sql`
+    file outside any migrations directory is owned by the directory it sits in,
+    which keeps unrelated dumps and seed files from being merged together.
+    """
+    parts = list(PurePosixPath(relpath).parts[:-1])
+    for index in range(len(parts) - 1, -1, -1):
+        if parts[index].lower() in _MIGRATION_DIRS:
+            owner = parts[:index]
+            if owner and owner[-1].lower() == "supabase":
+                owner = owner[:-1]
+            return "/".join(owner) or "."
+    return "/".join(parts) or "."
+
+
 @register
 class MissingRowLevelSecurity:
     id: str = "F1"
@@ -111,13 +134,26 @@ class MissingRowLevelSecurity:
         "your database, so RLS enabled by hand in the dashboard is not visible to it.",
         "The contents of policies are not evaluated: a table with a policy of `USING (true)` "
         "is reported as protected.",
+        "Migrations are grouped by the project directory that owns them, so one repository "
+        "holding several applications is analysed as several databases. Two projects that "
+        "genuinely share one database are analysed as if they did not.",
     )
 
     def check(self, ctx: ScanContext) -> Iterable[Finding]:
-        migrations = self._migration_files(ctx)
-        if not migrations:
-            return
+        groups = self._migration_groups(ctx)
+        for schema_root, migrations in sorted(groups.items()):
+            yield from self._check_one_schema(
+                ctx, migrations, schema_root=schema_root, name_the_schema=len(groups) > 1
+            )
 
+    def _check_one_schema(
+        self,
+        ctx: ScanContext,
+        migrations: tuple[str, ...],
+        *,
+        schema_root: str,
+        name_the_schema: bool,
+    ) -> Iterable[Finding]:
         created: dict[tuple[str, str], _Table] = {}
         dropped: set[tuple[str, str]] = set()
         rls_enabled: set[tuple[str, str]] = set()
@@ -169,11 +205,18 @@ class MissingRowLevelSecurity:
 
         yield Finding(
             rule_id=self.id,
-            title=(f"{len(names)} table{'s' if len(names) != 1 else ''} may be readable by anyone"),
+            title=(
+                f"{len(names)} table{'s' if len(names) != 1 else ''} may be readable by anyone"
+                + (f" in {schema_root}" if name_the_schema else "")
+            ),
             severity=Severity.FATAL,
             confidence=Confidence.UNVERIFIED,
             summary=(
-                "Your migrations create "
+                (
+                    f"In `{schema_root}`, your migrations create "
+                    if name_the_schema
+                    else "Your migrations create "
+                )
                 + ", ".join(f"`{n}`" for n in names[:6])
                 + (" and others" if len(names) > 6 else "")
                 + " without enabling row-level security. Supabase's anon key is published in your "
@@ -216,6 +259,24 @@ class MissingRowLevelSecurity:
         )
 
     @staticmethod
-    def _migration_files(ctx: ScanContext) -> tuple[str, ...]:
-        preferred = ctx.index.matching("supabase/migrations/*.sql", "migrations/*.sql")
-        return tuple(sorted(preferred or ctx.index.with_suffix(".sql")))
+    def _migration_groups(ctx: ScanContext) -> dict[str, tuple[str, ...]]:
+        """Migrations grouped by the project that owns them.
+
+        One scan target can contain several applications -- a monorepo, an
+        `apps/` directory, a repository that vendors an example alongside the
+        real thing. Each has its own database, and pooling their SQL into one
+        schema is a false-negative machine: an `ALTER TABLE profiles ENABLE ROW
+        LEVEL SECURITY` in one app silently vouches for an unprotected
+        `profiles` in another, because the analysis only ever saw one name.
+
+        That is not hypothetical. Running this scanner over its own repository
+        reported two unprotected tables instead of three, because `clean-app`
+        protects a `profiles` table and `vulnerable-app` does not.
+        """
+        preferred = ctx.index.matching("**/supabase/migrations/*.sql", "**/migrations/*.sql")
+        files = preferred or ctx.index.with_suffix(".sql")
+
+        groups: dict[str, list[str]] = {}
+        for path in sorted(files):
+            groups.setdefault(_schema_root(path), []).append(path)
+        return {root: tuple(paths) for root, paths in groups.items()}
