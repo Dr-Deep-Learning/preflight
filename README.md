@@ -84,12 +84,12 @@ Two consequences fall out of the same commitment:
 
 ## What it checks today
 
-Four rules, versioned as ruleset `2026.09.1`. `preflight rules` prints the
+Four rules, versioned as ruleset `2026.09.2`. `preflight rules` prints the
 current set; `GET /rules` serves it as JSON.
 
 | ID | Tier | Check | Detects |
 |----|------|-------|---------|
-| **F1** | Fatal | Database access control | Tables created in SQL migrations with no `ENABLE ROW LEVEL SECURITY`, including the case where a policy exists but RLS was never enabled, so the policy is inert |
+| **F1** | Fatal | Database access control | Tables created in SQL migrations with no `ENABLE ROW LEVEL SECURITY`, including the case where a policy exists but RLS was never enabled, so the policy is inert. Migrations are grouped per application, so a repository holding several apps is analysed as several databases rather than one |
 | **F2** | Fatal | Privileged key exposure | Service-role JWTs, PEM private keys, Postgres URLs with passwords, AWS keys and Stripe secret keys written into source; environment files tracked by git |
 | **S1** | Serious | Payment webhook verification | Stripe and Paddle webhook handlers that trust the request body without calling `constructEvent` / `unmarshal` or comparing an HMAC — so a forged `checkout.session.completed` would be believed |
 | **S2** | Serious | Third-party key exposure | LLM, email, SMS and maps keys in code that ships to the browser, and secrets named with a `NEXT_PUBLIC_` / `VITE_` prefix that the bundler will inline |

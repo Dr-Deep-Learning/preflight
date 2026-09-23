@@ -34,3 +34,8 @@ out/
 .vscode/
 .idea/
 .DS_Store
+
+# Tier 2 survey output: real repo names with unpatched findings.
+# Aggregate numbers are publishable; this directory is not.
+evals/survey/
+
