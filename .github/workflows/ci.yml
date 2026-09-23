@@ -103,7 +103,7 @@ jobs:
 
           scan vulnerable-app > /tmp/vulnerable.json
           jq -e '.result.verdict.headline == "Not safe to launch"' /tmp/vulnerable.json
-          jq -e '[.result.findings[].rule_id] | unique == ["F1","F2","S1","S2"]' /tmp/vulnerable.json
+          jq -e '[.result.findings[].rule_id] | unique == ["F1","F2","F3","S1","S2"]' /tmp/vulnerable.json
 
           scan clean-app > /tmp/clean.json
           jq -e '.result.verdict.headline == "Clean"' /tmp/clean.json
